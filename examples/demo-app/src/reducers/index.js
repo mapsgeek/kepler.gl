@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -21,68 +21,57 @@
 import {combineReducers} from 'redux';
 import {handleActions} from 'redux-actions';
 
-import keplerGlReducer, {combinedUpdaters} from 'kepler.gl/reducers';
+import keplerGlReducer, {combinedUpdaters, uiStateUpdaters} from 'kepler.gl/reducers';
 import {processGeojson, processCsvData} from 'kepler.gl/processors';
 import KeplerGlSchema from 'kepler.gl/schemas';
-import {EXPORT_MAP_FORMAT} from 'kepler.gl/constants';
-
-import sharingReducer from './sharing';
+import {EXPORT_MAP_FORMATS} from 'kepler.gl/constants';
 
 import {
   INIT,
-  SET_LOADING_METHOD,
   LOAD_MAP_SAMPLE_FILE,
   LOAD_REMOTE_RESOURCE_SUCCESS,
+  LOAD_REMOTE_RESOURCE_ERROR,
   SET_SAMPLE_LOADING_STATUS
 } from '../actions';
 
-import {
-  AUTH_TOKENS,
-  DEFAULT_FEATURE_FLAGS,
-  DEFAULT_LOADING_METHOD,
-  LOADING_METHODS
-} from '../constants/default-settings';
+import {AUTH_TOKENS, DEFAULT_FEATURE_FLAGS} from '../constants/default-settings';
 import {generateHashId} from '../utils/strings';
 
 // INITIAL_APP_STATE
 const initialAppState = {
   appName: 'example',
   loaded: false,
-  loadingMethod: DEFAULT_LOADING_METHOD,
-  currentOption: DEFAULT_LOADING_METHOD.options[0],
-  previousMethod: null,
   sampleMaps: [], // this is used to store sample maps fetch from a remote json file
   isMapLoading: false, // determine whether we are loading a sample map,
   error: null, // contains error when loading/retrieving data/configuration
-    // {
-    //   status: null,
-    //   message: null
-    // }
+  // {
+  //   status: null,
+  //   message: null
+  // }
   // eventually we may have an async process to fetch these from a remote location
   featureFlags: DEFAULT_FEATURE_FLAGS
 };
 
 // App reducer
-export const appReducer = handleActions({
-  [INIT]: (state) => ({
-    ...state,
-    loaded: true
-  }),
-  [SET_LOADING_METHOD]: (state, action) => ({
-    ...state,
-    previousMethod: state.loadingMethod,
-    loadingMethod: LOADING_METHODS.find(({id}) => id === action.method),
-    error: null
-  }),
-  [LOAD_MAP_SAMPLE_FILE]: (state, action) => ({
-    ...state,
-    sampleMaps: action.samples
-  }),
-  [SET_SAMPLE_LOADING_STATUS]: (state, action) => ({
-    ...state,
-    isMapLoading: action.isMapLoading
-  })
-}, initialAppState);
+export const appReducer = handleActions(
+  {
+    [INIT]: state => ({
+      ...state,
+      loaded: true
+    }),
+    [LOAD_MAP_SAMPLE_FILE]: (state, action) => ({
+      ...state,
+      sampleMaps: action.samples
+    }),
+    [SET_SAMPLE_LOADING_STATUS]: (state, action) => ({
+      ...state,
+      isMapLoading: action.isMapLoading
+    })
+  },
+  initialAppState
+);
+
+const {DEFAULT_EXPORT_MAP} = uiStateUpdaters;
 
 // combine app reducer and keplerGl reducer
 // to mimic the reducer state of kepler.gl website
@@ -94,19 +83,19 @@ const demoReducer = combineReducers({
     // in the exported file
     uiState: {
       exportMap: {
-        format: EXPORT_MAP_FORMAT.HTML,
-        [EXPORT_MAP_FORMAT.JSON]: {
-          hasData: true
-        },
-        [EXPORT_MAP_FORMAT.HTML]: {
-          exportMapboxAccessToken: AUTH_TOKENS.EXPORT_MAPBOX_TOKEN,
-          userMapboxToken: ''
+        ...DEFAULT_EXPORT_MAP,
+        [EXPORT_MAP_FORMATS.HTML]: {
+          ...DEFAULT_EXPORT_MAP[[EXPORT_MAP_FORMATS.HTML]],
+          exportMapboxAccessToken: AUTH_TOKENS.EXPORT_MAPBOX_TOKEN
         }
       }
+    },
+    visState: {
+      loaders: [], // Add additional loaders.gl loaders here
+      loadOptions: {} // Add additional loaders.gl loader options here
     }
   }),
-  app: appReducer,
-  sharing: sharingReducer
+  app: appReducer
 });
 
 // this can be moved into a action and call kepler.gl action
@@ -133,18 +122,42 @@ export const loadRemoteResourceSuccess = (state, action) => {
     data: processorMethod(action.response)
   };
 
-  const config = action.config ?
-    KeplerGlSchema.parseSavedConfig(action.config) : null;
+  const config = action.config ? KeplerGlSchema.parseSavedConfig(action.config) : null;
 
   const keplerGlInstance = combinedUpdaters.addDataToMapUpdater(
     state.keplerGl.map, // "map" is the id of your kepler.gl instance
     {
       payload: {
         datasets,
-        config
+        config,
+        options: {
+          centerMap: Boolean(!action.config)
+        }
       }
     }
   );
+
+  return {
+    ...state,
+    app: {
+      ...state.app,
+      currentSample: action.options,
+      isMapLoading: false // we turn off the spinner
+    },
+    keplerGl: {
+      ...state.keplerGl, // in case you keep multiple instances
+      map: keplerGlInstance
+    }
+  };
+};
+
+export const loadRemoteResourceError = (state, action) => {
+  const {error, url} = action;
+
+  const errorNote = {
+    type: 'error',
+    message: error.message || `Error loading ${url}`
+  };
 
   return {
     ...state,
@@ -154,13 +167,19 @@ export const loadRemoteResourceSuccess = (state, action) => {
     },
     keplerGl: {
       ...state.keplerGl, // in case you keep multiple instances
-      map: keplerGlInstance
+      map: {
+        ...state.keplerGl.map,
+        uiState: uiStateUpdaters.addNotificationUpdater(state.keplerGl.map.uiState, {
+          payload: errorNote
+        })
+      }
     }
   };
 };
 
 const composedUpdaters = {
-  [LOAD_REMOTE_RESOURCE_SUCCESS]: loadRemoteResourceSuccess
+  [LOAD_REMOTE_RESOURCE_SUCCESS]: loadRemoteResourceSuccess,
+  [LOAD_REMOTE_RESOURCE_ERROR]: loadRemoteResourceError
 };
 
 const composedReducer = (state, action) => {

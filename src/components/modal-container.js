@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,53 +22,61 @@ import React, {Component} from 'react';
 import PropTypes from 'prop-types';
 import {css} from 'styled-components';
 import {findDOMNode} from 'react-dom';
-import {Blob} from 'global/window';
+import {createSelector} from 'reselect';
+import get from 'lodash.get';
+import document from 'global/document';
 
-import ModalDialog from './common/modal';
-import {formatCsv} from 'processors/data-processor';
-import KeplerGlSchema from 'schemas';
-import {downloadFile, dataURItoBlob} from 'utils/export-image-utils';
+import {EXPORT_DATA_TYPE_OPTIONS} from 'constants/default-settings';
+import ModalDialogFactory from './modals/modal-dialog';
+import {exportJson, exportHtml, exportData, exportImage, exportMap} from 'utils/export-utils';
+import {isValidMapInfo} from 'utils/map-info-utils';
+
 // modals
 import DeleteDatasetModalFactory from './modals/delete-data-modal';
+import OverWriteMapModalFactory from './modals/overwrite-map-modal';
 import DataTableModalFactory from './modals/data-table-modal';
 import LoadDataModalFactory from './modals/load-data-modal';
 import ExportImageModalFactory from './modals/export-image-modal';
 import ExportDataModalFactory from './modals/export-data-modal';
-import ExportMapModalFactory from './modals/export-map-modal';
+import ExportMapModalFactory from './modals/export-map-modal/export-map-modal';
 import AddMapStyleModalFactory from './modals/add-map-style-modal';
+import SaveMapModalFactory from './modals/save-map-modal';
+import ShareMapModalFactory from './modals/share-map-modal';
 
 // Breakpoints
 import {media} from 'styles/media-breakpoints';
 
 // Template
-import {exportMapToHTML} from 'templates/export-map';
 import {
   ADD_DATA_ID,
   DATA_TABLE_ID,
-  DEFAULT_EXPORT_IMAGE_NAME,
   DELETE_DATA_ID,
   EXPORT_DATA_ID,
-  EXPORT_DATA_TYPE,
   EXPORT_IMAGE_ID,
   EXPORT_MAP_ID,
-  ADD_MAP_STYLE_ID
+  ADD_MAP_STYLE_ID,
+  SAVE_MAP_ID,
+  SHARE_MAP_ID,
+  OVERWRITE_MAP_ID
 } from 'constants/default-settings';
-import {EXPORT_MAP_FORMAT} from '../constants/default-settings';
+import {EXPORT_MAP_FORMATS} from 'constants/default-settings';
+import KeyEvent from 'constants/keyevent';
+import {getFileFormatNames, getFileExtensions} from '../reducers/vis-state-selectors';
 
 const DataTableModalStyle = css`
-  height: 85%;
-  width: 90%;
   top: 80px;
   padding: 32px 0 0 0;
-  max-width: unset;
-  ${media.palm`
-    width: 100vw;
-    padding: 0;
-    margin: 0;
-  `}
-`;
+  width: 90vw;
+  max-width: 90vw;
 
-const DeleteDatasetModalStyled = css`
+  ${media.portable`
+    padding: 0;
+  `} ${media.palm`
+    padding: 0;
+    margin: 0 auto;
+  `};
+`;
+const smallModalCss = css`
   width: 40%;
   padding: 40px 40px 32px 40px;
 `;
@@ -77,38 +85,77 @@ const LoadDataModalStyle = css`
   top: 60px;
 `;
 
+const DefaultStyle = css`
+  max-width: 960px;
+`;
+
 ModalContainerFactory.deps = [
   DeleteDatasetModalFactory,
+  OverWriteMapModalFactory,
   DataTableModalFactory,
   LoadDataModalFactory,
   ExportImageModalFactory,
   ExportDataModalFactory,
   ExportMapModalFactory,
-  AddMapStyleModalFactory
+  AddMapStyleModalFactory,
+  ModalDialogFactory,
+  SaveMapModalFactory,
+  ShareMapModalFactory
 ];
 
 export default function ModalContainerFactory(
   DeleteDatasetModal,
+  OverWriteMapModal,
   DataTableModal,
   LoadDataModal,
   ExportImageModal,
   ExportDataModal,
   ExportMapModal,
-  AddMapStyleModal
+  AddMapStyleModal,
+  ModalDialog,
+  SaveMapModal,
+  ShareMapModal
 ) {
-  class ModalWrapper extends Component {
+  /** @typedef {import('./modal-container').ModalContainerProps} ModalContainerProps */
+  /** @augments React.Component<ModalContainerProps> */
+  class ModalContainer extends Component {
+    // TODO - remove when prop types are fully exported
     static propTypes = {
       rootNode: PropTypes.object,
       containerW: PropTypes.number,
       containerH: PropTypes.number,
       mapboxApiAccessToken: PropTypes.string.isRequired,
+      mapboxApiUrl: PropTypes.string,
       mapState: PropTypes.object.isRequired,
       mapStyle: PropTypes.object.isRequired,
       uiState: PropTypes.object.isRequired,
       visState: PropTypes.object.isRequired,
       visStateActions: PropTypes.object.isRequired,
       uiStateActions: PropTypes.object.isRequired,
-      mapStyleActions: PropTypes.object.isRequired
+      mapStyleActions: PropTypes.object.isRequired,
+      onSaveToStorage: PropTypes.func,
+      cloudProviders: PropTypes.arrayOf(PropTypes.object)
+    };
+    componentDidMount = () => {
+      document.addEventListener('keyup', this._onKeyUp);
+    };
+    componentWillUnmount() {
+      document.removeEventListener('keyup', this._onKeyUp);
+    }
+
+    cloudProviders = props => props.cloudProviders;
+    providerWithStorage = createSelector(this.cloudProviders, cloudProviders =>
+      cloudProviders.filter(p => p.hasPrivateStorage())
+    );
+    providerWithShare = createSelector(this.cloudProviders, cloudProviders =>
+      cloudProviders.filter(p => p.hasSharingUrl())
+    );
+
+    _onKeyUp = event => {
+      const keyCode = event.keyCode;
+      if (keyCode === KeyEvent.DOM_VK_ESCAPE) {
+        this._closeModal();
+      }
     };
 
     _closeModal = () => {
@@ -125,103 +172,81 @@ export default function ModalContainerFactory(
       this._closeModal();
     };
 
-    _onFileUpload = blob => {
-      this.props.visStateActions.loadFiles(blob);
+    _onFileUpload = fileList => {
+      this.props.visStateActions.loadFiles(fileList);
     };
 
     _onExportImage = () => {
-      const {exporting, imageDataUri} = this.props.uiState.exportImage;
-      if (!exporting && imageDataUri) {
-        const file = dataURItoBlob(imageDataUri);
-        downloadFile(file, DEFAULT_EXPORT_IMAGE_NAME);
-      }
-      this.props.uiStateActions.cleanupExportImage();
-      this._closeModal();
-    };
-
-    _downloadFile(data, type, filename) {
-      const fileBlob = new Blob([data], {type});
-      downloadFile(fileBlob, filename);
-    }
-
-    _onExportData = () => {
-      const {visState, uiState} = this.props;
-      const {datasets} = visState;
-      const {selectedDataset, dataType, filtered} = uiState.exportData;
-      // get the selected data
-      const filename = 'kepler-gl';
-      const selectedDatasets = datasets[selectedDataset] ? [datasets[selectedDataset]] : Object.values(datasets);
-      if (!selectedDatasets.length) {
-        // error: selected dataset not found.
+      if (!this.props.uiState.exportImage.processing) {
+        exportImage(this.props);
+        this.props.uiStateActions.cleanupExportImage();
         this._closeModal();
       }
-
-      selectedDatasets.forEach(selectedData => {
-        const {allData, data, fields, label} = selectedData;
-        const exportData = filtered ? data : allData;
-        // start to export data according to selected data type
-        switch (dataType) {
-          case EXPORT_DATA_TYPE.CSV: {
-            const type = 'text/csv';
-            const csv = formatCsv(exportData, fields);
-            this._downloadFile(csv, type, `${filename}_${label}.csv`);
-            break;
-          }
-          // TODO: support more file types.
-          default:
-            break;
-        }
-
-      });
-
-      this._closeModal();
     };
 
-    _onExportJSONMap = () => {
-      const {uiState} = this.props;
-      const {hasData} = uiState.exportMap[EXPORT_MAP_FORMAT.JSON];
-
-      // we pass all props because we avoid to create new variables
-      const data = hasData ? KeplerGlSchema.save(this.props)
-        : KeplerGlSchema.getConfigToSave(this.props);
-
-      this._downloadFile(
-        JSON.stringify(data, null, 2),
-        'application/json',
-        'keplergl.json'
-      );
-
-      this._closeModal();
-    };
-
-    _onExportHTMLMap = () => {
-      const {uiState} = this.props;
-      const {userMapboxToken, exportMapboxAccessToken} = uiState.exportMap[EXPORT_MAP_FORMAT.HTML];
-
-      const data = {
-        ...KeplerGlSchema.save(this.props),
-        mapboxApiAccessToken: (userMapboxToken || '') !== '' ? userMapboxToken : exportMapboxAccessToken
-      };
-
-      this._downloadFile(
-        exportMapToHTML(data),
-        'text/html',
-        'kepler.gl.html'
-      );
-
+    _onExportData = () => {
+      exportData(this.props, this.props.uiState.exportData);
       this._closeModal();
     };
 
     _onExportMap = () => {
       const {uiState} = this.props;
       const {format} = uiState.exportMap;
+      (format === EXPORT_MAP_FORMATS.HTML ? exportHtml : exportJson)(
+        this.props,
+        this.props.uiState.exportMap[format] || {}
+      );
+      this._closeModal();
+    };
 
-      const downloader = {
-        [EXPORT_MAP_FORMAT.HTML]: this._onExportHTMLMap,
-        [EXPORT_MAP_FORMAT.JSON]: this._onExportJSONMap
-      }[format];
+    _exportFileToCloud = ({provider, isPublic, overwrite, closeModal}) => {
+      const toSave = exportMap(this.props);
 
-      downloader && downloader();
+      this.props.providerActions.exportFileToCloud({
+        // @ts-ignore
+        mapData: toSave,
+        provider,
+        options: {
+          isPublic,
+          overwrite
+        },
+        closeModal,
+        onSuccess: this.props.onExportToCloudSuccess,
+        onError: this.props.onExportToCloudError
+      });
+    };
+
+    _onSaveMap = (overwrite = false) => {
+      const {currentProvider} = this.props.providerState;
+      // @ts-ignore
+      const provider = this.props.cloudProviders.find(p => p.name === currentProvider);
+      this._exportFileToCloud({
+        provider,
+        isPublic: false,
+        overwrite,
+        closeModal: true
+      });
+    };
+
+    _onOverwriteMap = () => {
+      this._onSaveMap(true);
+    };
+
+    _onShareMapUrl = provider => {
+      this._exportFileToCloud({provider, isPublic: true, overwrite: false, closeModal: false});
+    };
+
+    _onCloseSaveMap = () => {
+      this.props.providerActions.resetProviderStatus();
+      this._closeModal();
+    };
+
+    _onLoadCloudMap = payload => {
+      this.props.providerActions.loadCloudMap({
+        ...payload,
+        onSuccess: this.props.onLoadCloudMapSuccess,
+        onError: this.props.onLoadCloudMapError
+      });
     };
 
     /* eslint-disable complexity */
@@ -234,7 +259,9 @@ export default function ModalContainerFactory(
         uiState,
         visState,
         rootNode,
-        visStateActions
+        visStateActions,
+        uiStateActions,
+        providerState
       } = this.props;
       const {currentModal, datasetKeyToRemove} = uiState;
       const {datasets, layers, editingDataset} = visState;
@@ -242,15 +269,19 @@ export default function ModalContainerFactory(
       let template = null;
       let modalProps = {};
 
-      if (currentModal && currentModal.id &&
-        currentModal.template) {
+      // TODO - currentModal is a string
+      // @ts-ignore
+      if (currentModal && currentModal.id && currentModal.template) {
         // if currentMdoal template is already provided
         // TODO: need to check whether template is valid
-        template = (<currentModal.template/>);
+        // @ts-ignore
+        template = <currentModal.template />;
+        // @ts-ignore
         modalProps = currentModal.modalProps;
       } else {
         switch (currentModal) {
           case DATA_TABLE_ID:
+            const width = containerW * 0.9;
             template = (
               <DataTableModal
                 width={containerW * 0.9}
@@ -258,30 +289,36 @@ export default function ModalContainerFactory(
                 datasets={datasets}
                 dataId={editingDataset}
                 showDatasetTable={visStateActions.showDatasetTable}
+                sortTableColumn={visStateActions.sortTableColumn}
+                pinTableColumn={visStateActions.pinTableColumn}
+                copyTableColumn={visStateActions.copyTableColumn}
               />
             );
-            modalProps.cssStyle = DataTableModalStyle;
+
+            // TODO: we need to make this width consistent with the css rule defined modal.js:32 max-width: 70vw
+            modalProps.cssStyle = css`
+              ${DataTableModalStyle};
+              ${media.palm`
+                width: ${width}px;
+              `};
+            `;
             break;
           case DELETE_DATA_ID:
             // validate options
             if (datasetKeyToRemove && datasets && datasets[datasetKeyToRemove]) {
               template = (
-                <DeleteDatasetModal
-                  dataset={datasets[datasetKeyToRemove]}
-                  layers={layers}
-                />
+                <DeleteDatasetModal dataset={datasets[datasetKeyToRemove]} layers={layers} />
               );
-
               modalProps = {
-                title: 'Delete Dataset',
-                cssStyle: DeleteDatasetModalStyled,
+                title: 'modal.title.deleteDataset',
+                cssStyle: smallModalCss,
                 footer: true,
                 onConfirm: () => this._deleteDataset(datasetKeyToRemove),
                 onCancel: this._closeModal,
                 confirmButton: {
                   negative: true,
                   large: true,
-                  children: 'Delete'
+                  children: 'modal.button.delete'
                 }
               };
             }
@@ -289,12 +326,22 @@ export default function ModalContainerFactory(
           case ADD_DATA_ID:
             template = (
               <LoadDataModal
+                {...providerState}
                 onClose={this._closeModal}
                 onFileUpload={this._onFileUpload}
+                onLoadCloudMap={this._onLoadCloudMap}
+                cloudProviders={this.providerWithStorage(this.props)}
+                onSetCloudProvider={this.props.providerActions.setCloudProvider}
+                getSavedMaps={this.props.providerActions.getSavedMaps}
+                loadFiles={uiState.loadFiles}
+                fileLoading={visState.fileLoading}
+                fileLoadingProgress={visState.fileLoadingProgress}
+                fileFormatNames={getFileFormatNames(this.props.visState)}
+                fileExtensions={getFileExtensions(this.props.visState)}
               />
             );
             modalProps = {
-              title: 'Add Data To Map',
+              title: 'modal.title.addDataToMap',
               cssStyle: LoadDataModalStyle,
               footer: false,
               onConfirm: this._closeModal
@@ -303,24 +350,23 @@ export default function ModalContainerFactory(
           case EXPORT_IMAGE_ID:
             template = (
               <ExportImageModal
-                {...uiState.exportImage}
-                width={containerW}
-                height={containerH}
-                onChangeRatio={this.props.uiStateActions.setRatio}
-                onChangeResolution={this.props.uiStateActions.setResolution}
-                onToggleLegend={this.props.uiStateActions.toggleLegend}
+                exportImage={uiState.exportImage}
+                mapW={containerW}
+                mapH={containerH}
+                onUpdateImageSetting={uiStateActions.setExportImageSetting}
+                cleanupExportImage={uiStateActions.cleanupExportImage}
               />
             );
             modalProps = {
-              close: false,
-              title: 'Export Image',
+              title: 'modal.title.exportImage',
+              cssStyle: '',
               footer: true,
               onCancel: this._closeModal,
               onConfirm: this._onExportImage,
               confirmButton: {
                 large: true,
-                disabled: uiState.exportImage.exporting,
-                children: 'Download'
+                disabled: uiState.exportImage.processing,
+                children: 'modal.button.download'
               }
             };
             break;
@@ -328,46 +374,52 @@ export default function ModalContainerFactory(
             template = (
               <ExportDataModal
                 {...uiState.exportData}
+                supportedDataTypes={EXPORT_DATA_TYPE_OPTIONS}
                 datasets={datasets}
+                applyCPUFilter={this.props.visStateActions.applyCPUFilter}
                 onClose={this._closeModal}
-                onChangeExportDataType={this.props.uiStateActions.setExportDataType}
-                onChangeExportSelectedDataset={this.props.uiStateActions.setExportSelectedDataset}
-                onChangeExportFiltered={this.props.uiStateActions.setExportFiltered}
+                onChangeExportDataType={uiStateActions.setExportDataType}
+                onChangeExportSelectedDataset={uiStateActions.setExportSelectedDataset}
+                onChangeExportFiltered={uiStateActions.setExportFiltered}
               />
             );
             modalProps = {
-              close: false,
-              title: 'Export Data',
+              title: 'modal.title.exportData',
+              cssStyle: '',
               footer: true,
               onCancel: this._closeModal,
               onConfirm: this._onExportData,
               confirmButton: {
                 large: true,
-                children: 'Export'
+                children: 'modal.button.export'
               }
             };
             break;
           case EXPORT_MAP_ID:
-            const keplerGlConfig = KeplerGlSchema.getConfigToSave(
-              { mapStyle, visState, mapState, uiState }
-            );
+            const keplerGlConfig = visState.schema.getConfigToSave({
+              mapStyle,
+              visState,
+              mapState,
+              uiState
+            });
             template = (
               <ExportMapModal
                 config={keplerGlConfig}
                 options={uiState.exportMap}
-                onChangeExportMapFormat={this.props.uiStateActions.setExportMapFormat}
-                onEditUserMapboxAccessToken={this.props.uiStateActions.setUserMapboxAccessToken}
+                onChangeExportMapFormat={uiStateActions.setExportMapFormat}
+                onEditUserMapboxAccessToken={uiStateActions.setUserMapboxAccessToken}
+                onChangeExportMapHTMLMode={uiStateActions.setExportHTMLMapMode}
               />
             );
             modalProps = {
-              close: false,
-              title: 'Export Map',
+              title: 'modal.title.exportMap',
+              cssStyle: '',
               footer: true,
               onCancel: this._closeModal,
               onConfirm: this._onExportMap,
               confirmButton: {
                 large: true,
-                children: 'Export'
+                children: 'modal.button.export'
               }
             };
             break;
@@ -375,6 +427,7 @@ export default function ModalContainerFactory(
             template = (
               <AddMapStyleModal
                 mapboxApiAccessToken={this.props.mapboxApiAccessToken}
+                mapboxApiUrl={this.props.mapboxApiUrl}
                 mapState={this.props.mapState}
                 inputStyle={mapStyle.inputStyle}
                 inputMapStyle={this.props.mapStyleActions.inputMapStyle}
@@ -382,19 +435,92 @@ export default function ModalContainerFactory(
               />
             );
             modalProps = {
-              close: false,
-              title: 'Add Custom Mapbox Style',
+              title: 'modal.title.addCustomMapboxStyle',
+              cssStyle: '',
               footer: true,
               onCancel: this._closeModal,
               onConfirm: this._onAddCustomMapStyle,
               confirmButton: {
                 large: true,
                 disabled: !mapStyle.inputStyle.style,
-                children: 'Add Style'
+                children: 'modal.button.addStyle'
               }
             };
             break;
-
+          case SAVE_MAP_ID:
+            template = (
+              <SaveMapModal
+                {...providerState}
+                exportImage={uiState.exportImage}
+                mapInfo={visState.mapInfo}
+                onSetMapInfo={visStateActions.setMapInfo}
+                cloudProviders={this.providerWithStorage(this.props)}
+                onSetCloudProvider={this.props.providerActions.setCloudProvider}
+                cleanupExportImage={uiStateActions.cleanupExportImage}
+                onUpdateImageSetting={uiStateActions.setExportImageSetting}
+              />
+            );
+            modalProps = {
+              title: 'modal.title.saveMap',
+              cssStyle: '',
+              footer: true,
+              onCancel: this._closeModal,
+              onConfirm: () => this._onSaveMap(false),
+              confirmButton: {
+                large: true,
+                disabled:
+                  uiState.exportImage.processing ||
+                  !isValidMapInfo(visState.mapInfo) ||
+                  !providerState.currentProvider,
+                children: 'modal.button.save'
+              }
+            };
+            break;
+          case OVERWRITE_MAP_ID:
+            template = (
+              <OverWriteMapModal
+                {...providerState}
+                cloudProviders={this.props.cloudProviders}
+                title={get(visState, ['mapInfo', 'title'])}
+                onSetCloudProvider={this.props.providerActions.setCloudProvider}
+                onUpdateImageSetting={uiStateActions.setExportImageSetting}
+                cleanupExportImage={uiStateActions.cleanupExportImage}
+              />
+            );
+            modalProps = {
+              title: 'Overwrite Existing File?',
+              cssStyle: smallModalCss,
+              footer: true,
+              onConfirm: this._onOverwriteMap,
+              onCancel: this._closeModal,
+              confirmButton: {
+                large: true,
+                children: 'Yes',
+                disabled:
+                  uiState.exportImage.processing ||
+                  !isValidMapInfo(visState.mapInfo) ||
+                  !providerState.currentProvider
+              }
+            };
+            break;
+          case SHARE_MAP_ID:
+            template = (
+              <ShareMapModal
+                {...providerState}
+                isReady={!uiState.exportImage.processing}
+                cloudProviders={this.providerWithShare(this.props)}
+                onExport={this._onShareMapUrl}
+                onSetCloudProvider={this.props.providerActions.setCloudProvider}
+                cleanupExportImage={uiStateActions.cleanupExportImage}
+                onUpdateImageSetting={uiStateActions.setExportImageSetting}
+              />
+            );
+            modalProps = {
+              title: 'modal.title.shareURL',
+              cssStyle: '',
+              onCancel: this._onCloseSaveMap
+            };
+            break;
           default:
             break;
         }
@@ -402,10 +528,11 @@ export default function ModalContainerFactory(
 
       return this.props.rootNode ? (
         <ModalDialog
-          {...modalProps}
           parentSelector={() => findDOMNode(rootNode)}
           isOpen={Boolean(currentModal)}
-          close={this._closeModal}
+          onCancel={this._closeModal}
+          {...modalProps}
+          cssStyle={DefaultStyle.concat(modalProps.cssStyle)}
         >
           {template}
         </ModalDialog>
@@ -414,5 +541,5 @@ export default function ModalContainerFactory(
     /* eslint-enable complexity */
   }
 
-  return ModalWrapper;
+  return ModalContainer;
 }

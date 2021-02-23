@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -21,6 +21,7 @@
 import styled from 'styled-components';
 import ReactTooltip from 'react-tooltip';
 import {media} from 'styles/media-breakpoints';
+import classnames from 'classnames';
 
 export const SelectText = styled.span`
   color: ${props => props.theme.labelColor};
@@ -43,8 +44,7 @@ export const IconRoundSmall = styled.div`
   width: 18px;
   height: 18px;
   border-radius: 9px;
-  background-color: ${props =>
-    props.theme.secondaryBtnBgdHover}; // updated after checking sketch file
+  background-color: ${props => props.theme.secondaryBtnBgdHover};
   color: ${props => props.theme.secondaryBtnColor};
   align-items: center;
   justify-content: center;
@@ -60,15 +60,27 @@ export const CenterFlexbox = styled.div`
   align-items: center;
 `;
 
+export const CenterVerticalFlexbox = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+`;
+
 export const SpaceBetweenFlexbox = styled.div`
   display: flex;
-  align-items: space-between;
+  justify-content: space-between;
   margin-left: -16px;
-`
+`;
+
 export const SBFlexboxItem = styled.div`
   flex-grow: 1;
   margin-left: 16px;
-`
+`;
+
+export const SBFlexboxNoMargin = styled.div`
+  display: flex;
+  justify-content: space-between;
+`;
 
 export const PanelLabel = styled.label.attrs({
   className: 'side-panel-panel__label'
@@ -118,7 +130,7 @@ export const PanelHeaderContent = styled.div`
 export const PanelContent = styled.div.attrs({
   className: 'side-panel-panel__content'
 })`
-  background-color: ${props => props.theme.panelBackground};
+  background-color: ${props => props.theme.panelContentBackground};
   padding: 12px;
 `;
 
@@ -126,6 +138,7 @@ export const SidePanelSection = styled.div.attrs({
   className: 'side-panel-section'
 })`
   margin-bottom: 12px;
+
   opacity: ${props => (props.disabled ? 0.4 : 1)};
   pointer-events: ${props => (props.disabled ? 'none' : 'all')};
 `;
@@ -133,16 +146,18 @@ export const SidePanelSection = styled.div.attrs({
 export const SidePanelDivider = styled.div.attrs({
   className: 'side-panel-divider'
 })`
-  border-bottom: 1px solid ${props => props.theme.panelBorderColor};
-  height: 12px;
-  margin-bottom: 12px;
+  border-bottom: ${props => props.theme.sidepanelDividerBorder} solid
+    ${props => props.theme.panelBorderColor};
+  margin-bottom: ${props => props.theme.sidepanelDividerMargin}px;
+  height: ${props => props.theme.sidepanelDividerHeight}px;
 `;
 
 export const Tooltip = styled(ReactTooltip)`
   &.__react_component_tooltip {
-    font-size: 9.5px;
-    font-weight: 500;
+    font-size: ${props => props.theme.tooltipFontSize};
+    font-weight: 400;
     padding: 7px 18px;
+    box-shadow: ${props => props.theme.tooltipBoxShadow};
 
     &.type-dark {
       background-color: ${props => props.theme.tooltipBg};
@@ -174,49 +189,66 @@ export const Tooltip = styled(ReactTooltip)`
   }
 `;
 
-export const Button = styled.div.attrs({
-  className: 'button'
-})`
+export const Button = styled.div.attrs(props => ({
+  className: classnames('button', props.className)
+}))`
   align-items: center;
   background-color: ${props =>
     props.negative
       ? props.theme.negativeBtnBgd
       : props.secondary
-        ? props.theme.secondaryBtnBgd
-        : props.link ? props.theme.linkBtnBgd : props.theme.primaryBtnBgd};
+      ? props.theme.secondaryBtnBgd
+      : props.link
+      ? props.theme.linkBtnBgd
+      : props.floating
+      ? props.theme.floatingBtnBgd
+      : props.cta
+      ? props.theme.ctaBtnBgd
+      : props.theme.primaryBtnBgd};
   border-radius: ${props => props.theme.primaryBtnRadius};
   color: ${props =>
     props.negative
       ? props.theme.negativeBtnColor
       : props.secondary
-        ? props.theme.secondaryBtnColor
-        : props.link ? props.theme.linkBtnColor : props.theme.primaryBtnColor};
+      ? props.theme.secondaryBtnColor
+      : props.link
+      ? props.theme.linkBtnColor
+      : props.floating
+      ? props.theme.floatingBtnColor
+      : props.cta
+      ? props.theme.ctaBtnColor
+      : props.theme.primaryBtnColor};
   cursor: pointer;
   display: inline-flex;
   font-size: ${props =>
-    props.large ?
-      '14px'
+    props.large
+      ? props.theme.primaryBtnFontSizeLarge
       : props.small
-        ? '10px'
-        : '11px'};
+      ? props.theme.primaryBtnFontSizeSmall
+      : props.theme.primaryBtnFontSizeDefault};
   font-weight: 500;
+  font-family: ${props => props.theme.btnFontFamily};
   justify-content: center;
   letter-spacing: 0.3px;
   line-height: 14px;
   outline: 0;
-  padding: ${props =>
-    props.large ?
-      '14px 32px'
-      : props.small
-        ? '6px 9px'
-        : '9px 12px'};
+  padding: ${props => (props.large ? '14px 32px' : props.small ? '6px 9px' : '9px 12px')};
   text-align: center;
   transition: ${props => props.theme.transition};
   vertical-align: middle;
   width: ${props => props.width || 'auto'};
   opacity: ${props => (props.disabled ? 0.4 : 1)};
   pointer-events: ${props => (props.disabled ? 'none' : 'all')};
-
+  border: ${props =>
+    props.negative
+      ? props.theme.negativeBtnBorder
+      : props.secondary
+      ? props.theme.secondaryBtnBorder
+      : props.floating
+      ? props.theme.floatingBtnBorder
+      : props.link
+      ? props.theme.linkBtnBorder
+      : props.theme.primaryBtnBorder};
   :hover,
   :focus,
   :active,
@@ -225,32 +257,47 @@ export const Button = styled.div.attrs({
       props.negative
         ? props.theme.negativeBtnBgdHover
         : props.secondary
-          ? props.theme.secondaryBtnBgdHover
-          : props.link
-            ? props.theme.linkBtnActBgdHover
-            : props.theme.primaryBtnBgdHover};
+        ? props.theme.secondaryBtnBgdHover
+        : props.link
+        ? props.theme.linkBtnActBgdHover
+        : props.floating
+        ? props.theme.floatingBtnBgdHover
+        : props.cta
+        ? props.theme.ctaBtnBgdHover
+        : props.theme.primaryBtnBgdHover};
     color: ${props =>
       props.negative
         ? props.theme.negativeBtnActColor
         : props.secondary
-          ? props.theme.secondaryBtnActColor
-          : props.link
-            ? props.theme.linkBtnActColor
-            : props.theme.primaryBtnActColor};
+        ? props.theme.secondaryBtnActColor
+        : props.link
+        ? props.theme.linkBtnActColor
+        : props.floating
+        ? props.theme.floatingBtnActColor
+        : props.cta
+        ? props.theme.ctaBtnActColor
+        : props.theme.primaryBtnActColor};
   }
 
   svg {
-    margin-right: 8px;
+    margin-right: ${props => (props.large ? '10px' : props.small ? '6px' : '8px')};
   }
 `;
 
 export const Input = styled.input`
-  ${props =>
-    props.secondary ? props.theme.secondaryInput : props.theme.input};
+  ${props => (props.secondary ? props.theme.secondaryInput : props.theme.input)};
 `;
 
 export const InputLight = styled.input`
-  ${props => props.theme.inputLT}
+  ${props => props.theme.inputLT};
+`;
+
+export const TextArea = styled.textarea`
+  ${props => (props.secondary ? props.theme.secondaryInput : props.theme.input)};
+`;
+export const TextAreaLight = styled.textarea`
+  ${props => props.theme.inputLT} height: auto;
+  white-space: pre-wrap;
 `;
 
 export const InlineInput = styled(Input)`
@@ -259,31 +306,27 @@ export const InlineInput = styled(Input)`
 
 export const StyledPanelHeader = styled.div`
   background-color: ${props =>
-    props.active
-      ? props.theme.panelBackgroundHover
-      : props.theme.panelBackground};
+    props.active ? props.theme.panelBackgroundHover : props.theme.panelBackground};
   border-left: 3px solid
     rgb(
-      ${props =>
-        props.labelRCGColorValues
-          ? props.labelRCGColorValues.join(',')
-          : 'transparent'}
+      ${props => (props.labelRCGColorValues ? props.labelRCGColorValues.join(',') : 'transparent')}
     );
   padding: 0 10px 0 0;
   height: ${props => props.theme.panelHeaderHeight}px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  border-radius: ${props => props.theme.panelHeaderBorderRadius};
   transition: ${props => props.theme.transition};
 `;
 
 export const StyledPanelDropdown = styled.div`
   ${props => props.theme.panelDropdownScrollBar}
-  background-color: ${props => props.theme.panelBackground};
+  background-color: ${props =>
+    props.type === 'light' ? props.theme.modalDropdownBackground : props.theme.panelBackground};
   overflow-y: auto;
   box-shadow: ${props => props.theme.panelBoxShadow};
   border-radius: ${props => props.theme.panelBorderRadius};
-  margin-top: 2px;
   max-height: 500px;
   position: relative;
   z-index: 999;
@@ -311,21 +354,30 @@ export const DatasetSquare = styled.div`
   width: 8px;
   height: 8px;
   background-color: rgb(${props => props.color.join(',')});
-  margin-right: 12px
+  margin-right: 12px;
 `;
 
 export const SelectionButton = styled.div`
+  position: relative;
   border-radius: 2px;
-  border: 1px solid ${props => props.selected ? props.theme.primaryBtnBgd : props.theme.selectBorderColorLT};
-  color: ${props => props.selected ? props.theme.primaryBtnBgd : props.theme.selectBorderColorLT};
+  border: 1px solid
+    ${props =>
+      props.selected
+        ? props.theme.selectionBtnBorderActColor
+        : props.theme.selectionBtnBorderColor};
+  color: ${props =>
+    props.selected ? props.theme.selectionBtnActColor : props.theme.selectionBtnColor};
+  background-color: ${props =>
+    props.selected ? props.theme.selectionBtnActBgd : props.theme.selectionBtnBgd};
+
   cursor: pointer;
   font-weight: 500;
   margin-right: 6px;
-  padding: 6px 10px;
+  padding: 6px 16px;
 
   :hover {
-    color: ${props => props.available && props.theme.primaryBtnBgd};
-    border: 1px solid ${props => props.available && props.theme.primaryBtnBgd};
+    color: ${props => props.theme.selectionBtnActColor};
+    border: 1px solid ${props => props.theme.selectionBtnBorderActColor};
   }
 `;
 
@@ -343,10 +395,10 @@ export const Table = styled.table`
   }
 
   tbody {
-   tr td {
-     border-bottom: ${props => props.theme.panelBorderLT};
-     padding: 12px;
-   }
+    tr td {
+      border-bottom: ${props => props.theme.panelBorderLT};
+      padding: 12px;
+    }
   }
 `;
 
@@ -366,14 +418,99 @@ export const StyledModalContent = styled.div`
   `};
 `;
 
+export const StyledModalVerticalPanel = styled.div.attrs({
+  className: 'modal-vertical-panel'
+})`
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  font-size: 12px;
+
+  .modal-section:first-child {
+    margin-top: 24px;
+    ${media.palm`
+      margin-top: 0;
+    `};
+  }
+
+  input {
+    margin-right: 8px;
+  }
+`;
+
+export const StyledModalSection = styled.div.attrs({
+  className: 'modal-section'
+})`
+  margin-bottom: 32px;
+
+  .modal-section-title {
+    font-weight: 500;
+  }
+  .modal-section-subtitle {
+    color: ${props => props.theme.subtextColorLT};
+  }
+
+  input {
+    margin-top: 8px;
+  }
+
+  ${media.portable`
+    margin-bottom: 24px;
+  `};
+  ${media.palm`
+    margin-bottom: 16px;
+  `};
+`;
+
+export const StyledModalInputFootnote = styled.div.attrs({
+  className: 'modal-input__footnote'
+})`
+  display: flex;
+  justify-content: flex-end;
+  color: ${props => (props.error ? props.theme.errorColor : props.theme.subtextColorLT)};
+  font-size: 10px;
+`;
 /**
  * Newer versions of mapbox.gl display an error message banner on top of the map by default
  * which will cause the map to display points in the wrong locations
  * This workaround will hide the error banner.
  */
 export const StyledMapContainer = styled.div`
-  .mapboxgl-map .mapboxgl-missing-css {
-    display: none;
+  .mapboxgl-map {
+    .mapboxgl-missing-css {
+      display: none;
+    }
+    .mapboxgl-ctrl-attrib {
+      display: none;
+    }
+  }
+`;
+
+export const StyledAttrbution = styled.div.attrs({
+  className: 'mapbox-attribution-container'
+})`
+  bottom: 0;
+  right: 0;
+  position: absolute;
+  display: block;
+  margin: 0 10px 2px;
+  z-index: 0;
+
+  .attrition-logo {
+    display: flex;
+    font-size: 10px;
+    justify-content: flex-end;
+    align-items: center;
+    color: ${props => props.theme.labelColor};
+    margin-bottom: -4px;
+
+    a.mapboxgl-ctrl-logo {
+      width: 72px;
+      margin-left: 6px;
+    }
+  }
+  a {
+    font-size: 10px;
   }
 `;
 
@@ -382,21 +519,28 @@ export const StyledExportSection = styled.div`
   flex-direction: row;
   margin: 35px 0;
   width: 100%;
+  color: ${props => props.theme.textColorLT};
+  font-size: 12px;
+  opacity: ${props => (props.disabled ? 0.3 : 1)};
+  pointer-events: ${props => (props.disabled ? 'none' : 'all')};
 
   .description {
     width: 185px;
-
     .title {
       font-weight: 500;
-      color: ${props => props.theme.textColorLT};
-      font-size: 12px;
     }
     .subtitle {
-      color: ${props => props.theme.textColor};
+      color: ${props => props.theme.subtextColorLT};
       font-size: 11px;
     }
   }
-
+  .warning {
+    color: ${props => props.theme.errorColor};
+    font-weight: 500;
+  }
+  .description.full {
+    width: 100%;
+  }
   .selection {
     display: flex;
     flex-wrap: wrap;
@@ -416,34 +560,19 @@ export const StyledExportSection = styled.div`
       width: 250px;
       height: 36px;
 
-      background-image:
-        linear-gradient(45deg, transparent 50%, gray 50%),
-        linear-gradient(135deg, gray 50%, transparent 50%),
-        linear-gradient(to right, #ccc, #ccc);
-      background-position:
-        calc(100% - 20px) calc(1em + 2px),
-        calc(100% - 15px) calc(1em + 2px),
+      background-image: linear-gradient(45deg, transparent 50%, gray 50%),
+        linear-gradient(135deg, gray 50%, transparent 50%), linear-gradient(to right, #ccc, #ccc);
+      background-position: calc(100% - 20px) calc(1em + 2px), calc(100% - 15px) calc(1em + 2px),
         calc(100% - 2.5em) 4.5em;
-      background-size:
-        5px 5px,
-        5px 5px,
-        1px 1.5em;
+      background-size: 5px 5px, 5px 5px, 1px 1.5em;
       background-repeat: no-repeat;
     }
 
     select:focus {
-      background-image:
-        linear-gradient(45deg, green 50%, transparent 50%),
-        linear-gradient(135deg, transparent 50%, green 50%),
-        linear-gradient(to right, #ccc, #ccc);
-      background-position:
-        calc(100% - 15px) 1em,
-        calc(100% - 20px) 1em,
-        calc(100% - 2.5em) 4.5em;
-      background-size:
-        5px 5px,
-        5px 5px,
-        1px 1.5em;
+      background-image: linear-gradient(45deg, green 50%, transparent 50%),
+        linear-gradient(135deg, transparent 50%, green 50%), linear-gradient(to right, #ccc, #ccc);
+      background-position: calc(100% - 15px) 1em, calc(100% - 20px) 1em, calc(100% - 2.5em) 4.5em;
+      background-size: 5px 5px, 5px 5px, 1px 1.5em;
       background-repeat: no-repeat;
       border-color: green;
       outline: 0;
@@ -451,47 +580,107 @@ export const StyledExportSection = styled.div`
   }
 `;
 
-export const StyledFilteredOption = styled.div`
+export const StyledFilteredOption = styled(SelectionButton)`
   align-items: center;
-  border-radius: 2px;
-  border: 1px solid ${props => props.selected ? props.theme.primaryBtnBgd : props.theme.selectBorderColorLT};
-  cursor: pointer;
   display: flex;
   flex-direction: column;
-  height: 60px;
   justify-content: center;
   margin: 4px;
   padding: 8px 12px;
   width: 140px;
 
-  :hover {
-    border: 1px solid ${props => props.theme.primaryBtnBgd};
-  }
-
-  .filtered-title {
+  .filter-option-title {
     color: ${props => props.theme.textColorLT};
     font-size: 12px;
     font-weight: 500;
   }
-  .filtered-subtitle {
-    color: ${props => props.theme.textColor};
+  .filter-option-subtitle {
+    color: ${props => props.theme.subtextColorLT};
     font-size: 11px;
   }
 `;
 
-export const StyledType = styled.div`
-  border-radius: 2px;
-  border: 1px solid ${props => props.selected ? props.theme.primaryBtnBgd : props.theme.selectBorderColorLT};
-  color: ${props => props.selected ? props.theme.primaryBtnBgd : props.theme.selectBorderColorLT};
-  cursor: pointer;
-  font-weight: 500;
+export const StyledType = styled(SelectionButton)`
   height: 100px;
   margin: 4px;
   padding: 6px 10px;
   width: 100px;
+`;
 
-  :hover {
-    color: ${props => props.available && props.theme.primaryBtnBgd};
-    border: 1px solid ${props => props.available && props.theme.primaryBtnBgd};
+export const WidgetContainer = styled.div`
+  z-index: 1;
+`;
+
+export const BottomWidgetInner = styled.div`
+  background-color: ${props => props.theme.bottomWidgetBgd};
+  padding: ${props => `${props.theme.bottomInnerPdVert}px ${props.theme.bottomInnerPdSide}px`};
+  position: relative;
+  margin-top: ${props => props.theme.bottomPanelGap}px;
+`;
+
+export const MapControlButton = styled(Button).attrs({
+  className: 'map-control-button'
+})`
+  box-shadow: 0 6px 12px 0 rgba(0, 0, 0, 0.16);
+  height: 32px;
+  width: 32px;
+  padding: 0;
+  border-radius: 0;
+  background-color: ${props =>
+    props.active ? props.theme.floatingBtnBgdHover : props.theme.floatingBtnBgd};
+  color: ${props =>
+    props.active ? props.theme.floatingBtnActColor : props.theme.floatingBtnColor};
+  border: ${props =>
+    props.active ? props.theme.floatingBtnBorderHover : props.theme.floatingBtnBorder};
+
+  :hover,
+  :focus,
+  :active,
+  &.active {
+    background-color: ${props => props.theme.floatingBtnBgdHover};
+    color: ${props => props.theme.floatingBtnActColor};
+    border: ${props => props.theme.floatingBtnBorderHover};
+  }
+  svg {
+    margin-right: 0;
+  }
+`;
+
+export const StyledFilterContent = styled.div`
+  background-color: ${props => props.theme.panelContentBackground};
+  padding: 12px;
+`;
+
+export const TruncatedTitleText = styled.div`
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+`;
+
+export const CheckMark = styled.span.attrs({
+  className: 'checkbox-inner'
+})`
+  background-color: ${props => props.theme.selectionBtnBorderActColor};
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-top-left-radius: 2px;
+
+  :after {
+    position: absolute;
+    display: table;
+    border: 1px solid #fff;
+    border-top: 0;
+    border-left: 0;
+    transform: rotate(45deg) scale(1) translate(-50%, -50%);
+    opacity: 1;
+    content: ' ';
+    top: 40%;
+    left: 30%;
+    width: 3.2px;
+    height: 6.22px;
   }
 `;

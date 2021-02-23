@@ -61,14 +61,16 @@ Default initial `mapStyle`
 -   `styleType` **[string][22]** Default: `'dark'`
 -   `visibleLayerGroups` **[Object][23]** Default: `{}`
 -   `topLayerGroups` **[Object][23]** Default: `{}`
--   `mapStyles` **[Object][23]** mapping from style key to style objct
+-   `mapStyles` **[Object][23]** mapping from style key to style object
 -   `mapboxApiAccessToken` **[string][22]** Default: `null`
 -   `inputStyle` **[Object][23]** Default: `{}`
 -   `threeDBuildingColor` **[Array][24]** Default: `[r, g, b]`
 
 ### initMapStyleUpdater
 
-Propagate `mapStyle` reducer with `mapboxApiAccessToken`
+Propagate `mapStyle` reducer with `mapboxApiAccessToken` and `mapStylesReplaceDefault`.
+if mapStylesReplaceDefault is true mapStyles is emptied; loadMapStylesUpdater() will
+populate mapStyles.
 
 -   **Action**: [`keplerGlInit`][25]
 
@@ -98,6 +100,8 @@ Input a custom map style object
         -   `action.payload.name` **[string][22]** style name
         -   `action.payload.layerGroups` **[Object][23]** layer groups that can be used to set map layer visibility
         -   `action.payload.icon` **[Object][23]** icon image data url
+    -   `action.payload.inputStyle`  
+    -   `action.payload.mapState`  
 
 Returns **[Object][23]** nextState
 

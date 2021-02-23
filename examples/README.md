@@ -5,7 +5,7 @@ A list of examples to demonstrate adding `kepler.gl` to your app. Each of the ex
 To start each example, cd into the folder then run:
 
 ```
-yarn --ignore-engines && yarn start
+yarn && yarn start
 ```
 
 - ### [demo-app][demo-app]
@@ -23,14 +23,14 @@ yarn --ignore-engines && yarn start
 
 - ### [replace-component][replace-component]
   Example showing how to replace kepler.gl default components using `injectComponents` method.
-  
+
 - ### [custom-theme][custom-theme]
   Customize kepler.gl theme by override current style properties.
 
 
-[custom-reducer]: custom-reducer
-[demo-app]: demo-app
-[open-modal]: open-modal
-[umd-client]: umd-client
-[replace-component]: replace-component
-[custom-reducer]: custom-theme
+[custom-reducer]: custom-reducer/README.md
+[demo-app]: demo-app/README.md
+[open-modal]: open-modal/README.md
+[umd-client]: umd-client/README.md
+[replace-component]: replace-component/README.md
+[custom-theme]: custom-theme/README.md

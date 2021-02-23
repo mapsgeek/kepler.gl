@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -21,8 +21,8 @@
 import {connect as reduxConnect} from 'react-redux';
 import withLocalSelector from './with-local-selector';
 
-const defaultMapStateToProps = state => state;
-const defaultMapDispatchToProps = () => dispatch => ({dispatch});
+const defaultMapStateToProps = (state, _, __) => state;
+const defaultMapDispatchToProps = () => (dispatch, _, __) => ({dispatch});
 
 export const connect = (
   mapStateToProps = defaultMapStateToProps,
@@ -31,11 +31,9 @@ export const connect = (
   options
 ) => BaseComponent => {
   const mapDispatchToProps = makeMapDispatchToProps();
-  const reduxMapState = (state, props) =>
-    mapStateToProps(props.selector(state), props, state);
+  const reduxMapState = (state, props) => mapStateToProps(props.selector(state), props, state);
 
-  const reduxMapDispatch = (dispatch, props) =>
-    mapDispatchToProps(props.dispatch, props, dispatch);
+  const reduxMapDispatch = (dispatch, props) => mapDispatchToProps(props.dispatch, props, dispatch);
 
   const ReduxComponent = reduxConnect(
     reduxMapState,

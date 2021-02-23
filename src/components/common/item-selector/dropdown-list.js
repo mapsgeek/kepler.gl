@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -37,9 +37,12 @@ export const ListItem = ({value, displayOption = defaultDisplay}) => (
 );
 
 const DropdownListWrapper = styled.div`
-  background-color: ${props => props.theme.dropdownListBgd};
-  border-top: 1px solid ${props => props.theme.dropdownListBorderTop};
-  ${props => props.theme.dropdownList};
+  background-color: ${props =>
+    props.light ? props.theme.dropdownListBgdLT : props.theme.dropdownListBgd};
+  border-top: 1px solid
+    ${props =>
+      props.light ? props.theme.dropdownListBorderTopLT : props.theme.dropdownListBorderTop};
+  ${props => (props.light ? props.theme.dropdownListLT : props.theme.dropdownList)};
 `;
 
 export default class DropdownList extends Component {
@@ -48,14 +51,8 @@ export default class DropdownList extends Component {
     allowCustomValues: PropTypes.number,
     customClasses: PropTypes.object,
     customValues: PropTypes.arrayOf(PropTypes.any),
-    customListItemComponent: PropTypes.oneOfType([
-      PropTypes.element,
-      PropTypes.func
-    ]),
-    customListHeaderComponent: PropTypes.oneOfType([
-      PropTypes.element,
-      PropTypes.func
-    ]),
+    customListItemComponent: PropTypes.oneOfType([PropTypes.element, PropTypes.func]),
+    customListHeaderComponent: PropTypes.oneOfType([PropTypes.element, PropTypes.func]),
     selectionIndex: PropTypes.number,
     onOptionSelected: PropTypes.func,
     displayOption: PropTypes.func.isRequired,
@@ -83,7 +80,7 @@ export default class DropdownList extends Component {
   }
 
   render() {
-    const {fixedOptions} = this.props;
+    const {fixedOptions, light} = this.props;
     const display = this.props.displayOption;
 
     // Don't render if there are no options to display
@@ -96,7 +93,7 @@ export default class DropdownList extends Component {
     // For some reason onClick is not fired when clicked on an option
     // onMouseDown is used here as a workaround of #205 and other
     return (
-      <DropdownListWrapper className={classList.list}>
+      <DropdownListWrapper className={classList.list} light={light}>
         {this.props.customListHeaderComponent ? (
           <div className={classList.listHeader}>
             <this.props.customListHeaderComponent />
@@ -115,10 +112,7 @@ export default class DropdownList extends Component {
                 onMouseDown={e => this._onClick(value, e)}
                 onClick={e => this._onClick(value, e)}
               >
-                <this.props.customListItemComponent
-                  value={value}
-                  displayOption={display}
-                />
+                <this.props.customListItemComponent value={value} displayOption={display} />
               </div>
             ))}
           </div>
@@ -133,13 +127,10 @@ export default class DropdownList extends Component {
             onMouseDown={e => this._onClick(value, e)}
             onClick={e => this._onClick(value, e)}
           >
-            <this.props.customListItemComponent
-              value={value}
-              displayOption={display}
-            />
+            <this.props.customListItemComponent value={value} displayOption={display} />
           </div>
         ))}
       </DropdownListWrapper>
     );
   }
-};
+}

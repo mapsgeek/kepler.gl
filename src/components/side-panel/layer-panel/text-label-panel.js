@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -20,109 +20,127 @@
 
 import React, {Component} from 'react';
 import PropTypes from 'prop-types';
+import {FormattedMessage} from 'localization';
 
 import {
+  Button,
   PanelLabel,
-  SidePanelSection,
-  SpaceBetweenFlexbox,
   SBFlexboxItem,
-  Button
+  SidePanelSection,
+  SpaceBetweenFlexbox
 } from 'components/common/styled-components';
 import {Add} from 'components/common/icons';
 import ColorSelector from './color-selector';
-import FieldSelector from 'components/common/field-selector';
 import ItemSelector from 'components/common/item-selector/item-selector';
-import LayerConfigGroup, {
+import LayerConfigGroupFactory, {
   ConfigGroupCollapsibleContent,
   ConfigGroupCollapsibleHeader
 } from './layer-config-group';
-import RangeSlider from 'components/common/range-slider';
+import RangeSliderFactory from 'components/common/range-slider';
 
 import {LAYER_TEXT_CONFIGS} from 'layers/layer-factory';
+import FieldSelectorFactory from '../../common/field-selector';
 
-export default class TextLabelPanel extends Component {
-  static propTypes = {
-    fields: PropTypes.arrayOf(PropTypes.object),
-    textLabel: PropTypes.arrayOf(PropTypes.object),
-    updateLayerTextLabel: PropTypes.func.isRequired
-  };
+TextLabelPanelFactory.deps = [RangeSliderFactory, LayerConfigGroupFactory, FieldSelectorFactory];
+function TextLabelPanelFactory(RangeSlider, LayerConfigGroup, FieldSelector) {
+  class TextLabelPanel extends Component {
+    static propTypes = {
+      fields: PropTypes.arrayOf(PropTypes.object),
+      textLabel: PropTypes.arrayOf(PropTypes.object),
+      updateLayerTextLabel: PropTypes.func.isRequired
+    };
 
-  render() {
-    const {updateLayerTextLabel, textLabel, fields} = this.props;
-    const currentFields = textLabel.map(tl => tl.field && tl.field.name).filter(d => d);
-    return (
-      <LayerConfigGroup label={'label'} collapsible>
-        <ConfigGroupCollapsibleHeader>
-          <FieldSelector
-            fields={fields}
-            value={currentFields}
-            onSelect={selected => updateLayerTextLabel('all', 'fields', selected)}
-            multiSelect
-          />
-        </ConfigGroupCollapsibleHeader>
-        <ConfigGroupCollapsibleContent>
-          {textLabel.map((tl, idx) => (
-            <div key={tl.field ? tl.field.name : 'null'}>
-              <PanelLabel>{`Label ${idx + 1}`}</PanelLabel>
-              <SidePanelSection>
-                <FieldSelector
-                  fields={fields}
-                  value={(tl.field && tl.field.name) || 'Select a field'}
-                  placeholder={'empty'}
-                  onSelect={v => updateLayerTextLabel(idx, 'field', v)}
-                  erasable
-                />
-              </SidePanelSection>
-              <SidePanelSection>
-                <PanelLabel>{`Font size`}</PanelLabel>
-                <RangeSlider
-                  {...LAYER_TEXT_CONFIGS.fontSize}
-                  value1={tl.size}
-                  isRange={false}
-                  onChange={v => updateLayerTextLabel(idx, 'size', v[1])}
-                />
-              </SidePanelSection>
-              <SidePanelSection>
-                <PanelLabel>{`Font color`}</PanelLabel>
-                <ColorSelector
-                  colorSets={[
-                    {
-                      selectedColor: tl.color,
-                      setColor: v => updateLayerTextLabel(idx, 'color', v)
-                    }
-                  ]}
-                />
-              </SidePanelSection>
-              <SidePanelSection>
-                <SpaceBetweenFlexbox>
-                  <SBFlexboxItem>
-                    <PanelLabel>{`Text anchor`}</PanelLabel>
-                    <ItemSelector
-                      {...LAYER_TEXT_CONFIGS.textAnchor}
-                      selectedItems={tl.anchor}
-                      onChange={val => updateLayerTextLabel(idx, 'anchor', val)}
-                    />
-                  </SBFlexboxItem>
-                  <SBFlexboxItem>
-                    <PanelLabel>{`Alignment`}</PanelLabel>
-                    <ItemSelector
-                      {...LAYER_TEXT_CONFIGS.textAlignment}
-                      selectedItems={tl.alignment}
-                      onChange={val => updateLayerTextLabel(idx, 'alignment', val)}
-                    />
-                  </SBFlexboxItem>
-                </SpaceBetweenFlexbox>
-              </SidePanelSection>
-            </div>
-          ))}
-          <SidePanelSection>
-            <Button link onClick={val => updateLayerTextLabel(textLabel.length)}>
-              <Add height="12px" />
-              Add More Label
-            </Button>
-          </SidePanelSection>
-        </ConfigGroupCollapsibleContent>
-      </LayerConfigGroup>
-    );
+    render() {
+      const {updateLayerTextLabel, textLabel, fields} = this.props;
+      const currentFields = textLabel.map(tl => tl.field && tl.field.name).filter(d => d);
+      return (
+        <LayerConfigGroup label={'panel.text.label'} collapsible>
+          <ConfigGroupCollapsibleHeader>
+            <FieldSelector
+              fields={fields}
+              value={currentFields}
+              onSelect={selected => updateLayerTextLabel('all', 'fields', selected)}
+              multiSelect
+            />
+          </ConfigGroupCollapsibleHeader>
+          <ConfigGroupCollapsibleContent>
+            {textLabel.map((tl, idx) => (
+              <div key={tl.field ? tl.field.name : `null-${idx}`}>
+                <PanelLabel>
+                  <FormattedMessage id={'panel.text.labelWithId'} values={{labelId: idx + 1}} />
+                </PanelLabel>
+                <SidePanelSection>
+                  <FieldSelector
+                    fields={fields}
+                    value={(tl.field && tl.field.name) || 'placeholder.selectField'}
+                    placeholder={'placeholder.empty'}
+                    onSelect={v => updateLayerTextLabel(idx, 'field', v)}
+                    erasable
+                  />
+                </SidePanelSection>
+                <SidePanelSection>
+                  <PanelLabel>
+                    <FormattedMessage id="panel.text.fontSize" />
+                  </PanelLabel>
+                  <RangeSlider
+                    {...LAYER_TEXT_CONFIGS.fontSize}
+                    value1={tl.size}
+                    isRange={false}
+                    onChange={v => updateLayerTextLabel(idx, 'size', v[1])}
+                  />
+                </SidePanelSection>
+                <SidePanelSection>
+                  <PanelLabel>
+                    <FormattedMessage id="panel.text.fontColor" />
+                  </PanelLabel>
+                  <ColorSelector
+                    colorSets={[
+                      {
+                        selectedColor: tl.color,
+                        setColor: v => updateLayerTextLabel(idx, 'color', v)
+                      }
+                    ]}
+                  />
+                </SidePanelSection>
+                <SidePanelSection>
+                  <SpaceBetweenFlexbox>
+                    <SBFlexboxItem>
+                      <PanelLabel>
+                        <FormattedMessage id="panel.text.textAnchor" />
+                      </PanelLabel>
+                      <ItemSelector
+                        {...LAYER_TEXT_CONFIGS.textAnchor}
+                        selectedItems={tl.anchor}
+                        onChange={val => updateLayerTextLabel(idx, 'anchor', val)}
+                      />
+                    </SBFlexboxItem>
+                    <SBFlexboxItem>
+                      <PanelLabel>
+                        <FormattedMessage id="panel.text.alignment" />
+                      </PanelLabel>
+                      <ItemSelector
+                        {...LAYER_TEXT_CONFIGS.textAlignment}
+                        selectedItems={tl.alignment}
+                        onChange={val => updateLayerTextLabel(idx, 'alignment', val)}
+                      />
+                    </SBFlexboxItem>
+                  </SpaceBetweenFlexbox>
+                </SidePanelSection>
+              </div>
+            ))}
+            <SidePanelSection>
+              <Button link onClick={val => updateLayerTextLabel(textLabel.length)}>
+                <Add height="12px" />
+                <FormattedMessage id="panel.text.addMoreLabel" />
+              </Button>
+            </SidePanelSection>
+          </ConfigGroupCollapsibleContent>
+        </LayerConfigGroup>
+      );
+    }
   }
+
+  return TextLabelPanel;
 }
+
+export default TextLabelPanelFactory;

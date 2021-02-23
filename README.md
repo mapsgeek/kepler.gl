@@ -6,7 +6,7 @@
     <img src="https://api.travis-ci.com/keplergl/kepler.gl.svg?branch=master" alt="build" />
   </a>
   <a href="https://github.com/keplergl/kepler.gl">
-    <img src="https://githubbadges.com/star.svg?user=keplergl&repo=kepler.gl&style=flat" alt="stars" />
+    <img src="https://img.shields.io/github/stars/keplergl/kepler.gl.svg?style=flat" alt="stars" />
   </a>
   <a href='https://opensource.org/licenses/MIT'>
     <img src='https://img.shields.io/badge/License-MIT-blue.svg' alt='MIT License' />
@@ -14,10 +14,13 @@
   <a href='https://app.fossa.com/projects/custom%2B4458%2Fgithub.com%2Fkeplergl%2Fkepler.gl?ref=badge_shield'>
     <img src='https://app.fossa.com/api/projects/custom%2B4458%2Fgithub.com%2Fkeplergl%2Fkepler.gl.svg?type=shield' alt='Fossa' />
   </a>
+  <a href="https://app.netlify.com/sites/keplergl/deploys" alt="Netlify Status">
+    <img src="https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fdeveloper.oswaldlabs.com%2Fnetlify-status%2F0c9b895c-acd0-43fd-8af7-fe960181b686?style=flat" />
+  </a>
 </p>
 
-<h1 align="center">Kepler.gl | <a href="http://kepler.gl">Website</a> |
-<a href="http://kepler.gl/#/demo">Demo App</a>
+<h1 align="center">
+  kepler.gl | <a href="http://kepler.gl">Website</a> | <a href="http://kepler.gl/#/demo">Demo App</a> | <a href="https://docs.kepler.gl/">Docs</a>
 </h1>
 <h3></h3>
 
@@ -36,6 +39,7 @@ Kepler.gl is also a React component that uses [Redux](https://redux.js.org/) to 
 - [Examples][examples]
 - [Get Started][get-started]
 - [App User Guide][user-guide]
+- [Jupyter Widget User Guide][user-guide-jupyter]
 - [Tutorial][vis-academy]
 - [Stack Overflow][stack]
 - [Contribution Guidelines][contributing]
@@ -44,12 +48,12 @@ Kepler.gl is also a React component that uses [Redux](https://redux.js.org/) to 
 
 ## Env
 
-Use Node v6 and above, older node versions have not been tested.
+Use Node 10.15.0 or above, older node versions have not been supported/ tested.
 For best results, use [nvm](https://github.com/creationix/nvm) `nvm install`.
 
 ## Install kepler.gl
 
-Install node (`> 6`), yarn, and project dependencies
+Install node (`> 10.15.0`), yarn, and project dependencies
 
 ```sh
 npm install --save kepler.gl
@@ -59,17 +63,17 @@ yarn add kepler.gl
 
 kepler.gl is built upon [mapbox][mapbox]. You will need a [Mapbox Access Token][mapbox-token] to use it.
 
-If you don't use a module bundler, it's also fine. Kepler.gl npm package includes precompiled production UMD builds in the (umd folder)[https://unpkg.com/kepler.gl/umd].
+If you don't use a module bundler, it's also fine. Kepler.gl npm package includes precompiled production UMD builds in the [umd folder](https://unpkg.com/kepler.gl/umd).
 You can add the script tag to your html file as it follows:
 
 ```html
-<script src="https://unpkg.com/kepler.gl/umd/keplergl.min.js"></script>
+<script src="https://unpkg.com/kepler.gl/umd/keplergl.min.js" />
 ```
 
 or if you would like, you can load a specific version
 
 ```html
-<script src="https://unpkg.com/kepler.gl@0.2.2/umd/keplergl.min.js"></script>
+<script src="https://unpkg.com/kepler.gl@0.2.2/umd/keplergl.min.js" />
 ```
 
 ## Develop kepler.gl
@@ -237,7 +241,66 @@ Read more about [Components][components].
 
 - default: `null`
 
+One of `"dark"`, `"light"` or `"base"`
 You can pass theme name or object used to customize Kepler.gl style. Kepler.gl provide an `'light'` theme besides the default 'dark' theme. When pass in a theme object Kepler.gl will use the value passed as input to override values from [theme](https://github.com/keplergl/kepler.gl/blob/master/src/styles/base.js).
+
+Read more about [Custom Theme][custom-theme]
+
+#### `mapboxApiUrl` (String, optional)
+
+- Default: `https://api.mapbox.com`
+
+If you are using your own mapbox tile server, you can pass in your own tile server api url.
+
+#### `mapStylesReplaceDefault` (Boolean, optional)
+
+- Default: `false`
+
+kepler.gl provide 4 map styles to choose from. Pass `true` if you want to supply your own `mapStyles`. See Below.
+
+#### `mapStyles` (Array, optional)
+
+- Default: `[]`
+
+You can supply additional map styles to be displayed in [map style selection panel](https://github.com/keplergl/kepler.gl/blob/master/docs/user-guides/f-map-styles/1-base-map-styles.md). By default, additional map styles will be added to default map styles. If pass `mapStylesReplaceDefault: true`, they will replace the default ones. kepler.gl will attempt to group layers of your style based on its `id` naming convention and use it to allow toggle visibility of [base map layers](https://github.com/keplergl/kepler.gl/blob/master/docs/user-guides/f-map-styles/2-map-layers.md). Supply your own `layerGroups` to override default for more accurate layer grouping.
+
+Each `mapStyles` should has the following properties:
+
+- `id` (String, required) unique string that should **not** be one of these reserved `dark` `light` `muted`. `muted_night`
+- `label` (String, required) name to be displayed in map style selection panel
+- `url` (String, required) mapbox style url or a url pointing to the map style json object
+- `icon` (String, optional) image icon of the style, it can be a url, or an [image data url](https://flaviocopes.com/data-urls/#how-does-a-data-url-look)
+- `layerGroups` (Array, optional)
+
+```js
+const mapStyles = [
+  {
+    id: 'my_dark_map',
+    label: 'Dark Streets 9',
+    url: 'mapbox://styles/mapbox/dark-v9',
+    icon: `${apiHost}/styles/v1/mapbox/dark-v9/static/-122.3391,37.7922,9.19,0,0/400x300?access_token=${accessToken}&logo=false&attribution=false`,
+    layerGroups: [
+      {
+        slug: 'label',
+        filter: ({id}) => id.match(/(?=(label|place-|poi-))/),
+        defaultVisibility: true
+      },
+      {
+        // adding this will keep the 3d building option
+        slug: '3d building',
+        filter: () => false,
+        defaultVisibility: false
+      }
+    ]
+  }
+];
+```
+
+#### `initialUiState` (object, optional)
+
+- Default: `undefined`
+
+Intial UI State applied to uiState reducer, value will be shallow merged with default [`INITIAL_UI_STATE`](https://docs.kepler.gl/docs/api-reference/reducers/ui-state#initial_ui_state)
 
 ### 3. Dispatch custom actions to `keplerGl` reducer.
 
@@ -481,24 +544,27 @@ Read more about [replacing UI component][replace-ui-component]
 
 ### 6. How to add data to map
 
-To interact with a kepler.gl instance and add new data to it, you can dispatch **`addDataToMap`** action from anywhere inside your app. It adds a dataset or multiple datasets to kepler.gl instance and update the full configuration (mapState, mapStyle, visState).
+To interact with a kepler.gl instance and add new data to it, you can dispatch the **`addDataToMap`** action from anywhere inside your app. It adds a dataset or multiple datasets to a kepler.gl instance and updates the full configuration (mapState, mapStyle, visState).
 
 #### Parameters
 
-- `datasets` **([Array][41]&lt;[Object][40]> | [Object][40])** **\*required** datasets can be a dataset or an array of datasets
-  Each dataset object needs to have `info` and `data` property.
-  - `datasets.info` **[Object][40]** \-info of a dataset
-    - `datasets.info.id` **[string][42]** id of this dataset. If config is defined, `id` should matches the `dataId` in config.
-    - `datasets.info.label` **[string][42]** A display name of this dataset
-  - `datasets.data` **[Object][40]** **\*required** The data object, in a tabular format with 2 properties `fields` and `rows`
-    - `datasets.data.fields` **[Array][41]&lt;[Object][40]>** **\*required** Array of fields,
-      - `datasets.data.fields.name` **[string][42]** **\*required** Name of the field,
-    - `datasets.data.rows` **[Array][41]&lt;[Array][41]>** **\*required** Array of rows, in a tabular format with `fields` and `rows`
-- `options` **[Object][40]**
-  - `options.centerMap` **[boolean][43]** `default: true` if `centerMap` is set to `true` kepler.gl will
-    place the map view within the data points boundaries
-  - `options.readOnly` **[boolean][43]** `default: false` if `readOnly` is set to `true`
-    the left setting panel will be hidden
+- `data` **[Object][40]** **\*required**
+  - `datasets` **([Array][41]&lt;[Object][40]> | [Object][40])** **\*required** datasets can be a dataset or an array of datasets
+    Each dataset object needs to have `info` and `data` property.
+    - `datasets.info` **[Object][40]** \-info of a dataset
+      - `datasets.info.id` **[string][42]** id of this dataset. If config is defined, `id` should matches the `dataId` in config.
+      - `datasets.info.label` **[string][42]** A display name of this dataset
+    - `datasets.data` **[Object][40]** **\*required** The data object, in a tabular format with 2 properties `fields` and `rows`
+      - `datasets.data.fields` **[Array][41]&lt;[Object][40]>** **\*required** Array of fields,
+        - `datasets.data.fields.name` **[string][42]** **\*required** Name of the field,
+      - `datasets.data.rows` **[Array][41]&lt;[Array][41]>** **\*required** Array of rows, in a tabular format with `fields` and `rows`
+  - `options` **[Object][40]**
+
+    - `options.centerMap` **[boolean][43]** `default: true` if `centerMap` is set to `true` kepler.gl will place the map view within the data points boundaries
+    - `options.readOnly` **[boolean][43]** `default: false` if `readOnly` is set to `true`
+      the left setting panel will be hidden
+    - `options.keepExistingConfig` **[boolean][43]** `default: false` whether to keep exiting map config, including layers, filters and splitMaps.
+
 - `config` **[Object][40]** this object will contain the full kepler.gl instance configuration {mapState, mapStyle, visState}
 
 Kepler.gl provides an easy API `KeplerGlSchema.getConfigToSave` to generate a json blob of the current kepler instance configuration.
@@ -556,7 +622,7 @@ this.props.dispatch(
 
 Read more about [addDataToMap](./docs/api-reference/actions/actions.md#adddatatomap) and [Saving and loading maps with schema manager][saving-loading-w-schema].
 
-[contributing]: contributing/CONTRIBUTING.md
+[contributing]: contributing/README.md
 [demo-app]: http://kepler.gl/#/demo
 [github]: https://github.com/keplergl/kepler.gl
 [github-pr]: https://help.github.com/articles/creating-a-pull-request/
@@ -569,15 +635,17 @@ Read more about [addDataToMap](./docs/api-reference/actions/actions.md#adddatato
 [stack]: https://stackoverflow.com/questions/tagged/kepler.gl
 [web]: http://www.kepler.gl/
 [vis-academy]: http://vis.academy/#/kepler.gl/
-[user-guide]: ./docs/user-guides/a-introduction.md
-[api-reference]: ./docs/api-reference/overview.md
+[user-guide]: docs/user-guides/README.md
+[user-guide-jupyter]: docs/keplergl-jupyter/README.md
+[api-reference]: docs/api-reference/README.md
 [get-started]: ./docs/api-reference/get-started.md
-[reducers]: ./docs/api-reference/reducers/overview.md
-[components]: ./docs/api-reference/components/overview.md
-[reducers]: ./docs/api-reference/reducers/overview.md
-[actions-updaters]: ./docs/api-reference/actions/overview.md
-[processors]: ./docs/api-reference/processors/overview.md
-[schemas]: ./docs/api-reference/schemas/overview.md
+[reducers]: docs/api-reference/reducers/README.md
+[components]: docs/api-reference/components/README.md
+[custom-theme]: docs/api-reference/custom-theme/README.md
+[reducers]: docs/api-reference/reducers/README.md
+[actions-updaters]: docs/api-reference/actions/README.md
+[processors]: docs/api-reference/processors/README.md
+[schemas]: docs/api-reference/schemas/README.md
 [using-updaters]: ./docs/api-reference/advanced-usages/using-updaters.md
 [forward-actions]: ./docs/api-reference/advanced-usages/forward-actions.md
 [replace-ui-component]: ./docs/api-reference/advanced-usages/replace-ui-component.md

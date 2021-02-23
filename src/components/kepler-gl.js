@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -18,20 +18,29 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-import React, {Component} from 'react';
+import React, {Component, createRef} from 'react';
 import {console as Console} from 'global/window';
 import {bindActionCreators} from 'redux';
-import styled, {ThemeProvider, withTheme}  from 'styled-components';
+import styled, {ThemeProvider, withTheme} from 'styled-components';
 import {createSelector} from 'reselect';
 import {connect as keplerGlConnect} from 'connect/keplergl-connect';
+import {IntlProvider} from 'react-intl';
+import {messages} from '../localization';
+import {RootContext} from 'components/context';
 
 import * as VisStateActions from 'actions/vis-state-actions';
 import * as MapStateActions from 'actions/map-state-actions';
 import * as MapStyleActions from 'actions/map-style-actions';
 import * as UIStateActions from 'actions/ui-state-actions';
+import * as ProviderActions from 'actions/provider-actions';
 
-import {EXPORT_IMAGE_ID, DIMENSIONS,
-  KEPLER_GL_NAME, KEPLER_GL_VERSION, THEME} from 'constants/default-settings';
+import {
+  DIMENSIONS,
+  KEPLER_GL_NAME,
+  KEPLER_GL_VERSION,
+  THEME,
+  DEFAULT_MAPBOX_API_URL
+} from 'constants/default-settings';
 import {MISSING_MAPBOX_TOKEN} from 'constants/user-feedbacks';
 
 import SidePanelFactory from './side-panel';
@@ -40,19 +49,21 @@ import BottomWidgetFactory from './bottom-widget';
 import ModalContainerFactory from './modal-container';
 import PlotContainerFactory from './plot-container';
 import NotificationPanelFactory from './notification-panel';
+import GeoCoderPanelFactory from './geocoder-panel';
 
 import {generateHashId} from 'utils/utils';
 import {validateToken} from 'utils/mapbox-utils';
+import {mergeMessages} from 'utils/locale-utils';
 
-import {theme as basicTheme, themeLT} from 'styles/base';
+import {theme as basicTheme, themeLT, themeBS} from 'styles/base';
 
 // Maybe we should think about exporting this or creating a variable
 // as part of the base.js theme
 const GlobalStyle = styled.div`
-  font-family: ff-clan-web-pro, 'Helvetica Neue', Helvetica, sans-serif;
-  font-weight: 400;
-  font-size: 0.875em;
-  line-height: 1.71429;
+  font-family: ${props => props.theme.fontFamily};
+  font-weight: ${props => props.theme.fontWeight};
+  font-size: ${props => props.theme.fontSize};
+  line-height: ${props => props.theme.lineHeight};
 
   *,
   *:before,
@@ -75,10 +86,154 @@ const GlobalStyle = styled.div`
     text-decoration: none;
     color: ${props => props.theme.labelColor};
   }
+
+  .mapboxgl-ctrl .mapboxgl-ctrl-logo {
+    display: none;
+  }
 `;
+
+export const mapFieldsSelector = props => ({
+  getMapboxRef: props.getMapboxRef,
+  mapboxApiAccessToken: props.mapboxApiAccessToken,
+  mapboxApiUrl: props.mapboxApiUrl,
+  mapState: props.mapState,
+  mapStyle: props.mapStyle,
+  onDeckInitialized: props.onDeckInitialized,
+  onViewStateChange: props.onViewStateChange,
+  deckGlProps: props.deckGlProps,
+  uiStateActions: props.uiStateActions,
+  visStateActions: props.visStateActions,
+  mapStateActions: props.mapStateActions,
+
+  // visState
+  editor: props.visState.editor,
+  datasets: props.visState.datasets,
+  layers: props.visState.layers,
+  layerOrder: props.visState.layerOrder,
+  layerData: props.visState.layerData,
+  layerBlending: props.visState.layerBlending,
+  filters: props.visState.filters,
+  interactionConfig: props.visState.interactionConfig,
+  hoverInfo: props.visState.hoverInfo,
+  clicked: props.visState.clicked,
+  mousePos: props.visState.mousePos,
+  animationConfig: props.visState.animationConfig,
+
+  // uiState
+  mapControls: props.uiState.mapControls,
+  readOnly: props.uiState.readOnly,
+  locale: props.uiState.locale
+});
+
+export const sidePanelSelector = (props, availableProviders) => ({
+  appName: props.appName,
+  version: props.version,
+  appWebsite: props.appWebsite,
+  mapStyle: props.mapStyle,
+  onSaveMap: props.onSaveMap,
+  uiState: props.uiState,
+  mapStyleActions: props.mapStyleActions,
+  visStateActions: props.visStateActions,
+  uiStateActions: props.uiStateActions,
+
+  datasets: props.visState.datasets,
+  filters: props.visState.filters,
+  layers: props.visState.layers,
+  layerOrder: props.visState.layerOrder,
+  layerClasses: props.visState.layerClasses,
+  interactionConfig: props.visState.interactionConfig,
+  mapInfo: props.visState.mapInfo,
+  layerBlending: props.visState.layerBlending,
+
+  width: props.sidePanelWidth,
+  availableProviders,
+  mapSaved: props.providerState.mapSaved
+});
+
+export const plotContainerSelector = props => ({
+  width: props.width,
+  height: props.height,
+  exportImageSetting: props.uiState.exportImage,
+  mapFields: mapFieldsSelector(props),
+  addNotification: props.uiStateActions.addNotification,
+  setExportImageSetting: props.uiStateActions.setExportImageSetting,
+  setExportImageDataUri: props.uiStateActions.setExportImageDataUri,
+  setExportImageError: props.uiStateActions.setExportImageError,
+  splitMaps: props.visState.splitMaps
+});
+
+export const isSplitSelector = props =>
+  props.visState.splitMaps && props.visState.splitMaps.length > 1;
+export const containerWSelector = props =>
+  props.mapState.width * (Number(isSplitSelector(props)) + 1);
+
+export const bottomWidgetSelector = (props, theme) => ({
+  filters: props.visState.filters,
+  datasets: props.visState.datasets,
+  uiState: props.uiState,
+  layers: props.visState.layers,
+  animationConfig: props.visState.animationConfig,
+  visStateActions: props.visStateActions,
+  sidePanelWidth: props.uiState.readOnly ? 0 : props.sidePanelWidth + theme.sidePanel.margin.left,
+  containerW: containerWSelector(props)
+});
+
+export const modalContainerSelector = (props, rootNode) => ({
+  mapStyle: props.mapStyle,
+  visState: props.visState,
+  mapState: props.mapState,
+  uiState: props.uiState,
+  providerState: props.providerState,
+
+  mapboxApiAccessToken: props.mapboxApiAccessToken,
+  mapboxApiUrl: props.mapboxApiUrl,
+  visStateActions: props.visStateActions,
+  uiStateActions: props.uiStateActions,
+  mapStyleActions: props.mapStyleActions,
+  providerActions: props.providerActions,
+
+  rootNode,
+  containerW: containerWSelector(props),
+  containerH: props.mapState.height,
+  // User defined cloud provider props
+  cloudProviders: props.cloudProviders,
+  onExportToCloudSuccess: props.onExportToCloudSuccess,
+  onLoadCloudMapSuccess: props.onLoadCloudMapSuccess,
+  onLoadCloudMapError: props.onLoadCloudMapError,
+  onExportToCloudError: props.onExportToCloudError
+});
+
+export const geoCoderPanelSelector = props => ({
+  isGeocoderEnabled: props.visState.interactionConfig.geocoder.enabled,
+  mapboxApiAccessToken: props.mapboxApiAccessToken,
+  mapState: props.mapState,
+  updateVisData: props.visStateActions.updateVisData,
+  removeDataset: props.visStateActions.removeDataset,
+  updateMap: props.mapStateActions.updateMap
+});
+
+export const notificationPanelSelector = props => ({
+  removeNotification: props.uiStateActions.removeNotification,
+  notifications: props.uiState.notifications
+});
+
+export const DEFAULT_KEPLER_GL_PROPS = {
+  mapStyles: [],
+  mapStylesReplaceDefault: false,
+  mapboxApiUrl: DEFAULT_MAPBOX_API_URL,
+  width: 800,
+  height: 800,
+  appName: KEPLER_GL_NAME,
+  version: KEPLER_GL_VERSION,
+  sidePanelWidth: DIMENSIONS.sidePanel.width,
+  theme: {},
+  cloudProviders: [],
+  readOnly: false
+};
 
 KeplerGlFactory.deps = [
   BottomWidgetFactory,
+  GeoCoderPanelFactory,
   MapContainerFactory,
   ModalContainerFactory,
   SidePanelFactory,
@@ -88,52 +243,75 @@ KeplerGlFactory.deps = [
 
 function KeplerGlFactory(
   BottomWidget,
+  GeoCoderPanel,
   MapContainer,
-  ModalWrapper,
+  ModalContainer,
   SidePanel,
   PlotContainer,
   NotificationPanel
 ) {
+  /** @typedef {import('./kepler-gl').UnconnectedKeplerGlProps} KeplerGlProps */
+  /** @augments React.Component<KeplerGlProps> */
   class KeplerGL extends Component {
-    static defaultProps = {
-      mapStyles: [],
-      width: 800,
-      height: 800,
-      appName: KEPLER_GL_NAME,
-      version: KEPLER_GL_VERSION,
-      sidePanelWidth: DIMENSIONS.sidePanel.width,
-      theme: {}
-    };
+    static defaultProps = DEFAULT_KEPLER_GL_PROPS;
 
-    componentWillMount() {
+    componentDidMount() {
       this._validateMapboxToken();
-      this._loadMapStyle(this.props.mapStyles);
+      this._loadMapStyle();
       this._handleResize(this.props);
-    }
-
-    componentWillReceiveProps(nextProps) {
-      if (
-        // if dimension props has changed
-        this.props.height !== nextProps.height ||
-        this.props.width !== nextProps.width ||
-        // react-map-gl will dispatch updateViewport after this._handleResize is called
-        // here we check if this.props.mapState.height is sync with props.height
-        nextProps.height !== this.props.mapState.height
-      ) {
-        this._handleResize(nextProps);
+      if (typeof this.props.onKeplerGlInitialized === 'function') {
+        this.props.onKeplerGlInitialized();
       }
     }
 
-    /* selector */
+    componentDidUpdate(prevProps) {
+      if (
+        // if dimension props has changed
+        this.props.height !== prevProps.height ||
+        this.props.width !== prevProps.width ||
+        // react-map-gl will dispatch updateViewport after this._handleResize is called
+        // here we check if this.props.mapState.height is sync with props.height
+        this.props.height !== this.props.mapState.height
+      ) {
+        this._handleResize(this.props);
+      }
+    }
+    static contextType = RootContext;
+
+    root = createRef();
+
+    /* selectors */
     themeSelector = props => props.theme;
-    availableThemeSelector = createSelector(
-      this.themeSelector,
-      theme => typeof theme === 'object' ? ({
-        ...basicTheme,
-        ...theme
-      }) : theme === THEME.light ? themeLT : theme
+    availableThemeSelector = createSelector(this.themeSelector, theme =>
+      typeof theme === 'object'
+        ? {
+            ...basicTheme,
+            ...theme
+          }
+        : theme === THEME.light
+        ? themeLT
+        : theme === THEME.base
+        ? themeBS
+        : theme
     );
 
+    availableProviders = createSelector(
+      props => props.cloudProviders,
+      providers =>
+        Array.isArray(providers) && providers.length
+          ? {
+              hasStorage: providers.some(p => p.hasPrivateStorage()),
+              hasShare: providers.some(p => p.hasSharingUrl())
+            }
+          : {}
+    );
+
+    localeMessagesSelector = createSelector(
+      props => props.localeMessages,
+      customMessages => (customMessages ? mergeMessages(messages, customMessages) : messages)
+    );
+
+    /* private methods */
     _validateMapboxToken() {
       const {mapboxApiAccessToken} = this.props;
       if (!validateToken(mapboxApiAccessToken)) {
@@ -160,12 +338,14 @@ function KeplerGlFactory(
         id: ms.id || generateHashId()
       }));
 
-      const allStyles = [...customStyles, ...defaultStyles].reduce((accu, style) => {
+      const allStyles = [...customStyles, ...defaultStyles].reduce(
+        (accu, style) => {
           const hasStyleObject = style.style && typeof style.style === 'object';
           accu[hasStyleObject ? 'toLoad' : 'toRequest'][style.id] = style;
 
           return accu;
-        }, {toLoad: {}, toRequest: {}}
+        },
+        {toLoad: {}, toRequest: {}}
       );
 
       this.props.mapStyleActions.loadMapStyles(allStyles.toLoad);
@@ -174,171 +354,72 @@ function KeplerGlFactory(
 
     render() {
       const {
-        // props
         id,
-        appName,
-        version,
-        onSaveMap,
-        onViewStateChange,
         width,
         height,
-        mapboxApiAccessToken,
-        getMapboxRef,
-
-        // redux state
-        mapStyle,
-        mapState,
         uiState,
         visState,
-
-        // actions,
-        visStateActions,
-        mapStateActions,
-        mapStyleActions,
-        uiStateActions
+        // readOnly override
+        readOnly
       } = this.props;
 
       const {
-        filters,
-        layers,
         splitMaps, // this will store support for split map view is necessary
-        layerOrder,
-        layerBlending,
-        layerClasses,
-        interactionConfig,
-        datasets,
-        layerData,
-        hoverInfo,
-        clicked
+        interactionConfig
       } = visState;
 
-      const notificationPanelFields = {
-        removeNotification: uiStateActions.removeNotification,
-        notifications: uiState.notifications
-      };
+      const isSplit = isSplitSelector(this.props);
+      const theme = this.availableThemeSelector(this.props);
+      const localeMessages = this.localeMessagesSelector(this.props);
+      const isExportingImage = uiState.exportImage.exporting;
+      const availableProviders = this.availableProviders(this.props);
 
-      const sideFields = {
-        appName,
-        version,
-        datasets,
-        filters,
-        layers,
-        layerOrder,
-        layerClasses,
-        interactionConfig,
-        mapStyle,
-        layerBlending,
-        onSaveMap,
-        uiState,
-        mapStyleActions,
-        visStateActions,
-        uiStateActions,
-        width: this.props.sidePanelWidth
-      };
-
-      const mapFields = {
-        datasets,
-        mapboxApiAccessToken,
-        mapState,
-        mapStyle,
-        mapControls: uiState.mapControls,
-        layers,
-        layerOrder,
-        layerData,
-        layerBlending,
-        interactionConfig,
-        hoverInfo,
-        clicked,
-        toggleMapControl: uiStateActions.toggleMapControl,
-        onViewStateChange,
-        uiStateActions,
-        visStateActions,
-        mapStateActions
-      };
-
-      const isSplit = splitMaps && splitMaps.length > 1;
-      const containerW = mapState.width * (Number(isSplit) + 1);
+      const mapFields = mapFieldsSelector(this.props);
+      const sideFields = sidePanelSelector(this.props, availableProviders);
+      const plotContainerFields = plotContainerSelector(this.props);
+      const bottomWidgetFields = bottomWidgetSelector(this.props, theme);
+      const modalContainerFields = modalContainerSelector(this.props, this.root.current);
+      const geoCoderPanelFields = geoCoderPanelSelector(this.props);
+      const notificationPanelFields = notificationPanelSelector(this.props);
 
       const mapContainers = !isSplit
-        ? [
-            <MapContainer
-              key={0}
-              index={0}
-              {...mapFields}
-              mapLayers={isSplit ? splitMaps[0].layers : null}
-              getMapboxRef={getMapboxRef}
-            />
-          ]
+        ? [<MapContainer key={0} index={0} {...mapFields} mapLayers={null} />]
         : splitMaps.map((settings, index) => (
             <MapContainer
               key={index}
               index={index}
               {...mapFields}
               mapLayers={splitMaps[index].layers}
-              getMapboxRef={getMapboxRef}
             />
           ));
 
-      const isExporting = uiState.currentModal === EXPORT_IMAGE_ID;
-
-      const theme = this.availableThemeSelector(this.props);
-
       return (
-        <ThemeProvider theme={theme}>
-          <GlobalStyle
-            style={{
-              position: 'relative',
-              width: `${width}px`,
-              height: `${height}px`
-            }}
-            className="kepler-gl"
-            id={`kepler-gl__${id}`}
-            ref={node => {
-              this.root = node;
-            }}
-          >
-            <NotificationPanel {...notificationPanelFields} />
-            {!uiState.readOnly && <SidePanel {...sideFields} />}
-            <div className="maps" style={{display: 'flex'}}>
-              {mapContainers}
-            </div>
-            {isExporting &&
-              <PlotContainer
-                width={width}
-                height={height}
-                exportImageSetting={uiState.exportImage}
-                mapFields={mapFields}
-                addNotification={uiStateActions.addNotification}
-                startExportingImage={uiStateActions.startExportingImage}
-                setExportImageDataUri={uiStateActions.setExportImageDataUri}
-                setExportImageError={uiStateActions.setExportImageError}
-              />
-            }
-            <BottomWidget
-              filters={filters}
-              datasets={datasets}
-              uiState={uiState}
-              visStateActions={visStateActions}
-              sidePanelWidth={
-                uiState.readOnly ? 0 : this.props.sidePanelWidth + DIMENSIONS.sidePanel.margin.left
-              }
-              containerW={containerW}
-            />
-            <ModalWrapper
-              mapStyle={mapStyle}
-              visState={visState}
-              mapState={mapState}
-              uiState={uiState}
-              mapboxApiAccessToken={mapboxApiAccessToken}
-              visStateActions={visStateActions}
-              uiStateActions={uiStateActions}
-              mapStyleActions={mapStyleActions}
-              rootNode={this.root}
-              containerW={containerW}
-              containerH={mapState.height}
-            />
-          </GlobalStyle>
-        </ThemeProvider>
+        <RootContext.Provider value={this.root}>
+          <IntlProvider locale={uiState.locale} messages={localeMessages[uiState.locale]}>
+            <ThemeProvider theme={theme}>
+              <GlobalStyle
+                className="kepler-gl"
+                id={`kepler-gl__${id}`}
+                style={{
+                  position: 'relative',
+                  width: `${width}px`,
+                  height: `${height}px`
+                }}
+                ref={this.root}
+              >
+                <NotificationPanel {...notificationPanelFields} />
+                {!uiState.readOnly && !readOnly && <SidePanel {...sideFields} />}
+                <div className="maps" style={{display: 'flex'}}>
+                  {mapContainers}
+                </div>
+                {isExportingImage && <PlotContainer {...plotContainerFields} />}
+                {interactionConfig.geocoder.enabled && <GeoCoderPanel {...geoCoderPanelFields} />}
+                <BottomWidget {...bottomWidgetFields} />
+                <ModalContainer {...modalContainerFields} />
+              </GlobalStyle>
+            </ThemeProvider>
+          </IntlProvider>
+        </RootContext.Provider>
       );
     }
   }
@@ -346,47 +427,42 @@ function KeplerGlFactory(
   return keplerGlConnect(mapStateToProps, makeMapDispatchToProps)(withTheme(KeplerGL));
 }
 
-function mapStateToProps(state, props) {
+export function mapStateToProps(state = {}, props) {
   return {
     ...props,
     visState: state.visState,
     mapStyle: state.mapStyle,
     mapState: state.mapState,
-    uiState: state.uiState
+    uiState: state.uiState,
+    providerState: state.providerState
   };
 }
 
 const defaultUserActions = {};
-const getDispatch = (dispatch) => dispatch
+
+const getDispatch = (dispatch, props) => dispatch;
 const getUserActions = (dispatch, props) => props.actions || defaultUserActions;
 
+/** @type {() => import('reselect').OutputParametricSelector<any, any, any, any>} */
 function makeGetActionCreators() {
-  return createSelector(
-    [getDispatch, getUserActions],
-    (dispatch, userActions) => {
-      const [
-        visStateActions,
-        mapStateActions,
-        mapStyleActions,
-        uiStateActions
-      ] = [
-        VisStateActions,
-        MapStateActions,
-        MapStyleActions,
-        UIStateActions
-      ].map(actions =>
-        bindActionCreators(mergeActions(actions, userActions), dispatch)
-      );
+  return createSelector([getDispatch, getUserActions], (dispatch, userActions) => {
+    const [visStateActions, mapStateActions, mapStyleActions, uiStateActions, providerActions] = [
+      VisStateActions,
+      MapStateActions,
+      MapStyleActions,
+      UIStateActions,
+      ProviderActions
+    ].map(actions => bindActionCreators(mergeActions(actions, userActions), dispatch));
 
-      return {
-        visStateActions,
-        mapStateActions,
-        mapStyleActions,
-        uiStateActions,
-        dispatch
-      };
-    }
-  );
+    return {
+      visStateActions,
+      mapStateActions,
+      mapStyleActions,
+      uiStateActions,
+      providerActions,
+      dispatch
+    };
+  });
 }
 
 function makeMapDispatchToProps() {
@@ -398,7 +474,7 @@ function makeMapDispatchToProps() {
       ...groupedActionCreators,
       dispatch
     };
-  }
+  };
 
   return mapDispatchToProps;
 }

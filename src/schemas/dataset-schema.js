@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,7 +24,6 @@ import {console as globalConsole} from 'global/window';
 import {VERSIONS} from './versions';
 import Schema from './schema';
 import {getFieldsFromData, getSampleForTypeAnalyze} from 'processors/data-processor';
-import {ALL_FIELD_TYPES} from 'constants/default-settings';
 
 // version v0
 const fieldPropertiesV0 = {
@@ -35,11 +34,11 @@ const fieldPropertiesV0 = {
 const fieldPropertiesV1 = {
   name: null,
   type: null,
-  format: null
+  format: null,
+  analyzerType: null
 };
 
 class FieldSchema extends Schema {
-  key = 'fields';
   save(fields) {
     return {
       [this.key]: fields.map(f => this.savePropertiesOrApplySchema(f)[this.key])
@@ -56,6 +55,7 @@ const propertiesV0 = {
   color: null,
   allData: null,
   fields: new FieldSchema({
+    key: 'fields',
     version: VERSIONS.v0,
     properties: fieldPropertiesV0
   })
@@ -64,6 +64,7 @@ const propertiesV0 = {
 const propertiesV1 = {
   ...propertiesV0,
   fields: new FieldSchema({
+    key: 'fields',
     version: VERSIONS.v1,
     properties: fieldPropertiesV1
   })
@@ -82,7 +83,9 @@ class DatasetSchema extends Schema {
     // recalculate field type
     // because we have updated type-analyzer
     // we need to add format to each field
-    const needCalculateMeta = fields[0] && !fields[0].hasOwnProperty('format');
+    const needCalculateMeta =
+      fields[0] &&
+      (!fields[0].hasOwnProperty('format') || !fields[0].hasOwnProperty('analyzerType'));
 
     if (needCalculateMeta) {
       const fieldOrder = fields.map(f => f.name);
@@ -90,19 +93,16 @@ class DatasetSchema extends Schema {
       const sampleData = getSampleForTypeAnalyze({fields: fieldOrder, allData});
       const meta = getFieldsFromData(sampleData, fieldOrder);
 
-      updatedFields = fields.map((f, i) => ({
-        ...f,
-        // note here we add format to timestamp field
-        format: f.type === ALL_FIELD_TYPES.timestamp ? meta[i].format : ''
+      updatedFields = meta.map((f, i) => ({
+        ...pick(meta[i], ['name', 'type', 'format']),
+        analyzerType: meta[i].analyzerType
       }));
 
       updatedFields.forEach((f, i) => {
-        if (meta[i].type !== f.type) {
+        if (fields[i].type !== f.type) {
           // if newly detected field type is different from saved type
           // we log it but won't update it, cause we don't want to break people's map
-          globalConsole.warn(
-            `detect ${f.name} type is now ${meta[i].type} instead of ${f.type}`
-          );
+          globalConsole.warn(`detect ${f.name} type is now ${f.type} instead of ${fields[i].type}`);
         }
       });
     }
@@ -117,10 +117,12 @@ class DatasetSchema extends Schema {
 
 const datasetSchema = {
   [VERSIONS.v0]: new DatasetSchema({
+    key: 'dataset',
     version: VERSIONS.v0,
     properties: propertiesV0
   }),
   [VERSIONS.v1]: new DatasetSchema({
+    key: 'dataset',
     version: VERSIONS.v1,
     properties: propertiesV1
   })

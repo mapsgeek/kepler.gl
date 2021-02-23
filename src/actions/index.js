@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -27,6 +27,7 @@ export * from './ui-state-actions';
 export * from './map-state-actions';
 export * from './map-style-actions';
 export * from './identity-actions';
+export * from './provider-actions';
 
 // Dispatch
 export {

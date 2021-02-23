@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,32 +19,35 @@
 // THE SOFTWARE.
 
 import React from 'react';
-import TimeRangeSlider from 'components/common/time-range-slider';
+import TimeRangeSliderFactory from 'components/common/time-range-slider';
 
 /*
  * TimeRangeFilter -> TimeRangeSlider -> RangeSlider
  */
-const TimeRangeFilter = ({
-  filter,
-  setFilter,
-  isAnyFilterAnimating,
-  toggleAnimation
-}) => (
-  <div>
+
+TimeRangeFilterFactory.deps = [TimeRangeSliderFactory];
+
+function TimeRangeFilterFactory(TimeRangeSlider) {
+  const TimeRangeFilter = ({filter, setFilter, isAnimatable, toggleAnimation, hideTimeTitle}) => (
     <TimeRangeSlider
+      id={filter.id}
       domain={filter.domain}
       value={filter.value}
       plotType={filter.plotType}
       lineChart={filter.lineChart}
       step={filter.step}
       speed={filter.speed}
+      isAnimating={filter.isAnimating}
       histogram={filter.enlarged ? filter.enlargedHistogram : filter.histogram}
       onChange={setFilter}
       toggleAnimation={toggleAnimation}
-      isAnimatable={!isAnyFilterAnimating || filter.isAnimating}
+      isAnimatable={isAnimatable}
       isEnlarged={filter.enlarged}
+      hideTimeTitle={hideTimeTitle}
     />
-  </div>
-);
+  );
 
-export default TimeRangeFilter;
+  return TimeRangeFilter;
+}
+
+export default TimeRangeFilterFactory;

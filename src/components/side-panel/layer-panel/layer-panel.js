@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,8 +22,8 @@ import React, {Component} from 'react';
 import styled from 'styled-components';
 import PropTypes from 'prop-types';
 
-import LayerConfigurator from './layer-configurator';
-import LayerPanelHeader from './layer-panel-header';
+import LayerConfiguratorFactory from './layer-configurator';
+import LayerPanelHeaderFactory from './layer-panel-header';
 
 const PanelWrapper = styled.div`
   font-size: 12px;
@@ -36,8 +36,9 @@ const PanelWrapper = styled.div`
   }
 `;
 
-function LayerPanelFactory() {
+LayerPanelFactory.deps = [LayerConfiguratorFactory, LayerPanelHeaderFactory];
 
+function LayerPanelFactory(LayerConfigurator, LayerPanelHeader) {
   class LayerPanel extends Component {
     static propTypes = {
       layer: PropTypes.object.isRequired,
@@ -47,11 +48,14 @@ function LayerPanelFactory() {
       layerTypeChange: PropTypes.func.isRequired,
       openModal: PropTypes.func.isRequired,
       removeLayer: PropTypes.func.isRequired,
+      duplicateLayer: PropTypes.func.isRequired,
       onCloseConfig: PropTypes.func,
-
       layerTypeOptions: PropTypes.arrayOf(PropTypes.any),
-      layerVisConfigChange: PropTypes.func,
-      layerVisualChannelConfigChange: PropTypes.func
+      layerVisConfigChange: PropTypes.func.isRequired,
+      layerVisualChannelConfigChange: PropTypes.func.isRequired,
+      layerColorUIChange: PropTypes.func.isRequired,
+      setLayerAnimationTime: PropTypes.func,
+      updateLayerAnimationSpeed: PropTypes.func
     };
 
     updateLayerConfig = newProp => {
@@ -66,17 +70,16 @@ function LayerPanelFactory() {
       this.props.layerVisConfigChange(this.props.layer, newVisConfig);
     };
 
+    updateLayerColorUI = (...args) => {
+      this.props.layerColorUIChange(this.props.layer, ...args);
+    };
+
     updateLayerTextLabel = (...args) => {
       this.props.layerTextLabelChange(this.props.layer, ...args);
     };
 
     updateLayerVisualChannelConfig = (newConfig, channel, scaleKey) => {
-      this.props.layerVisualChannelConfigChange(
-        this.props.layer,
-        newConfig,
-        channel,
-        scaleKey
-      );
+      this.props.layerVisualChannelConfigChange(this.props.layer, newConfig, channel, scaleKey);
     };
 
     _updateLayerLabel = ({target: {value}}) => {
@@ -91,7 +94,11 @@ function LayerPanelFactory() {
 
     _toggleEnableConfig = e => {
       e.stopPropagation();
-      const {layer: {config: {isConfigActive}}} = this.props;
+      const {
+        layer: {
+          config: {isConfigActive}
+        }
+      } = this.props;
       this.updateLayerConfig({isConfigActive: !isConfigActive});
     };
 
@@ -100,8 +107,13 @@ function LayerPanelFactory() {
       this.props.removeLayer(this.props.idx);
     };
 
+    _duplicateLayer = e => {
+      e.stopPropagation();
+      this.props.duplicateLayer(this.props.idx);
+    };
+
     render() {
-      const {layer, idx, datasets, layerTypeOptions} = this.props;
+      const {layer, datasets, layerTypeOptions} = this.props;
       const {config} = layer;
       const {isConfigActive} = config;
 
@@ -115,16 +127,16 @@ function LayerPanelFactory() {
         >
           <LayerPanelHeader
             isConfigActive={isConfigActive}
-            id={layer.id}
-            idx={idx}
+            layerId={layer.id}
             isVisible={config.isVisible}
             label={config.label}
-            labelRCGColorValues={datasets[config.dataId].color}
-            layerType={layer.name}
+            labelRCGColorValues={config.dataId ? datasets[config.dataId].color : null}
+            layerType={layer.type}
             onToggleEnableConfig={this._toggleEnableConfig}
             onToggleVisibility={this._toggleVisibility}
             onUpdateLayerLabel={this._updateLayerLabel}
             onRemoveLayer={this._removeLayer}
+            onDuplicateLayer={this._duplicateLayer}
           />
           {isConfigActive && (
             <LayerConfigurator
@@ -132,6 +144,7 @@ function LayerPanelFactory() {
               datasets={datasets}
               layerTypeOptions={layerTypeOptions}
               openModal={this.props.openModal}
+              updateLayerColorUI={this.updateLayerColorUI}
               updateLayerConfig={this.updateLayerConfig}
               updateLayerVisualChannelConfig={this.updateLayerVisualChannelConfig}
               updateLayerType={this.updateLayerType}

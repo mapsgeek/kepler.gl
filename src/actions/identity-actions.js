@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -27,17 +27,18 @@ import ActionTypes from 'constants/action-types';
  * Note that if you dispatch actions such as adding data to a kepler.gl instance before the React component is mounted, the action will not be
  * performed. Instance reducer can only handle actions when it is instantiated.
  * @memberof rootActions
- * @param {Object} payload
- * @param {string} payload.id - ***required** The id of the instance
- * @param {boolean} payload.mint - Whether to use a fresh empty state, when `mint: true` it will *always* load a fresh state when the component is re-mounted.
+ * @param payload
+ * @param payload.id - ***required** The id of the instance
+ * @param payload.mint - Whether to use a fresh empty state, when `mint: true` it will *always* load a fresh state when the component is re-mounted.
  * When `mint: false` it will register with existing instance state under the same `id`, when the component is unmounted then mounted again. Default: `true`
- * @param {string} payload.mapboxApiAccessToken - mapboxApiAccessToken to be saved in `map-style` reducer.
+ * @param payload.mapboxApiAccessToken - mapboxApiAccessToken to be saved in `map-style` reducer.
+ * @param payload.mapboxApiUrl - mapboxApiUrl to be saved in `map-style` reducer.
+ * @param payload.mapStylesReplaceDefault - mapStylesReplaceDefault to be saved in `map-style` reducer.
+ * @param payload.initialUiState - initial ui state
+ * @type {typeof import('./identity-actions').registerEntry}
  * @public
  */
-export const registerEntry = createAction(
-  ActionTypes.REGISTER_ENTRY,
-  ({id, mint, mapboxApiAccessToken}) => ({id, mint, mapboxApiAccessToken})
-);
+export const registerEntry = createAction(ActionTypes.REGISTER_ENTRY, payload => payload);
 
 /**
  *
@@ -48,10 +49,7 @@ export const registerEntry = createAction(
  * @param {string} id - the id of the instance to be deleted
  * @public
  */
-export const deleteEntry = createAction(
-  ActionTypes.DELETE_ENTRY,
-  id => id
-);
+export const deleteEntry = createAction(ActionTypes.DELETE_ENTRY, id => id);
 
 /**
  *
@@ -62,10 +60,10 @@ export const deleteEntry = createAction(
  * @param {string} newId - ***required** new id
  * @public
  */
-export const renameEntry = createAction(
-  ActionTypes.RENAME_ENTRY,
-  (oldId, newId) => ({oldId, newId})
-);
+export const renameEntry = createAction(ActionTypes.RENAME_ENTRY, (oldId, newId) => ({
+  oldId,
+  newId
+}));
 
 /**
  * This declaration is needed to group actions in docs
@@ -80,5 +78,6 @@ export const renameEntry = createAction(
  * @public
  */
 /* eslint-disable no-unused-vars */
-const rootActions = null
+// @ts-ignore
+const rootActions = null;
 /* eslint-enable no-unused-vars */

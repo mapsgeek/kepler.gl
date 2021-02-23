@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,16 +22,20 @@ import React, {Component} from 'react';
 import PropTypes from 'prop-types';
 import styled from 'styled-components';
 import pick from 'lodash.pick';
+import classnames from 'classnames';
 
 function noop() {}
 
 const StyledSwitchInput = styled.label`
-  ${props =>
-    props.secondary ? props.theme.secondarySwitch : props.theme.inputSwitch};
+  ${props => (props.secondary ? props.theme.secondarySwitch : props.theme.inputSwitch)};
 `;
 
 const StyledCheckboxInput = styled.label`
-  ${props => props.theme.inputCheckbox}
+  ${props => props.theme.inputCheckbox};
+`;
+
+const StyledRadiuInput = styled.label`
+  ${props => props.theme.inputRadio};
 `;
 
 const HiddenInput = styled.input`
@@ -40,9 +44,9 @@ const HiddenInput = styled.input`
 `;
 
 const StyledCheckbox = styled.div`
-  line-height: 0;
-  height: ${props => props.theme.switchBtnHeight};
-  margin-left: ${props => props.theme.switchLabelMargin}px;
+  display: flex;
+  min-height: ${props => props.theme.switchHeight}px;
+  margin-left: ${props => (props.type === 'radio' ? 0 : props.theme.switchLabelMargin)}px;
 `;
 
 export default class Checkbox extends Component {
@@ -98,9 +102,18 @@ export default class Checkbox extends Component {
       htmlFor: this.props.id
     };
 
-    const LabelElement = this.props.type === 'checkbox' ? StyledCheckboxInput : StyledSwitchInput;
+    const LabelElement =
+      this.props.type === 'checkbox'
+        ? StyledCheckboxInput
+        : this.props.type === 'radio'
+        ? StyledRadiuInput
+        : StyledSwitchInput;
+
     return (
-      <StyledCheckbox className="kg-checkbox">
+      <StyledCheckbox
+        type={this.props.type}
+        className={classnames('kg-checkbox', this.props.className)}
+      >
         <HiddenInput {...inputProps} />
         <LabelElement className="kg-checkbox__label" {...labelProps}>
           {this.props.label}

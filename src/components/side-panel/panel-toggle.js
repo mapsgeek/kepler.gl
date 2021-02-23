@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -21,6 +21,7 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import styled from 'styled-components';
+import {FormattedMessage} from 'localization';
 import {Tooltip} from 'components/common/styled-components';
 
 const propTypes = {
@@ -33,6 +34,7 @@ const PanelHeaderBottom = styled.div.attrs({
   className: 'side-side-panel__header__bottom'
 })`
   background-color: ${props => props.theme.sidePanelHeaderBg};
+  border-bottom: 1px solid ${props => props.theme.sidePanelHeaderBorder};
   padding: 0 16px;
   display: flex;
   min-height: 30px;
@@ -45,14 +47,13 @@ const PanelTab = styled.div.attrs({
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: ${props =>
-  props.active ? props.theme.subtextColorActive : 'transparent'};
-  color: ${props =>
-  props.active ? props.theme.subtextColorActive : props.theme.subtextColor};
+    props.active ? props.theme.panelToggleBorderColor : 'transparent'};
+  color: ${props => (props.active ? props.theme.subtextColorActive : props.theme.panelTabColor)};
   display: flex;
   justify-content: center;
-  margin-right: 12px;
-  padding-bottom: 6px;
-  width: 30px;
+  margin-right: ${props => props.theme.panelToggleMarginRight}px;
+  padding-bottom: ${props => props.theme.panelToggleBottomPadding}px;
+  width: ${props => props.theme.panelTabWidth};
 
   :hover {
     cursor: pointer;
@@ -72,13 +73,10 @@ const PanelToggleFactory = () => {
           onClick={() => togglePanel(panel.id)}
         >
           <panel.iconComponent height="20px" />
-          <Tooltip
-            id={`${panel.id}-nav`}
-            effect="solid"
-            delayShow={500}
-            place="bottom"
-          >
-            <span>{panel.label || panel.id}</span>
+          <Tooltip id={`${panel.id}-nav`} effect="solid" delayShow={500} place="bottom">
+            <span>
+              <FormattedMessage id={panel.label || panel.id} />
+            </span>
           </Tooltip>
         </PanelTab>
       ))}
@@ -87,6 +85,6 @@ const PanelToggleFactory = () => {
 
   PanelToggle.propTypes = propTypes;
   return PanelToggle;
-}
+};
 
 export default PanelToggleFactory;

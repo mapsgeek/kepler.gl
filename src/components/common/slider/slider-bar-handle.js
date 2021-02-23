@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -27,12 +27,9 @@ import MouseEventHandler from './mouse-event';
 const StyledSlider = styled.div`
   position: relative;
   background-color: ${props =>
-    props.active
-      ? props.theme.sliderBarHoverColor
-      : props.theme.sliderBarColor};
+    props.active ? props.theme.sliderBarHoverColor : props.theme.sliderBarColor};
   ${props => `${props.vertical ? 'width' : 'height'}: ${props.theme.sliderBarHeight}px`};
   border-radius: ${props => props.theme.sliderBarRadius};
-
   :hover {
     cursor: pointer;
   }
@@ -41,7 +38,6 @@ const StyledSlider = styled.div`
 function nope() {}
 
 export default class SliderBarHandle extends Component {
-
   static propTypes = {
     width: PropTypes.number,
     left: PropTypes.string,
@@ -61,7 +57,9 @@ export default class SliderBarHandle extends Component {
     this.mouseEvent = new MouseEventHandler({
       vertical: props.vertical,
       valueListener: props.sliderBarListener,
-      toggleMouseOver: this.toggleMouseOver
+      toggleMouseOver: this.toggleMouseOver,
+      track: props.track,
+      setAnchor: props.setAnchor
     });
   }
 
@@ -74,13 +72,15 @@ export default class SliderBarHandle extends Component {
   render() {
     const {width, v0Left} = this.props;
 
-    const style = this.props.vertical ? {
-      height: `${width}%`,
-      bottom: `${-100 + width + v0Left}%`
-    } : {
-      width: `${width}%`,
-      left: `${v0Left}%`
-    };
+    const style = this.props.vertical
+      ? {
+          height: `${width}%`,
+          bottom: `${-100 + width + v0Left}%`
+        }
+      : {
+          width: `${width}%`,
+          left: `${v0Left}%`
+        };
 
     return (
       <StyledSlider
@@ -94,4 +94,4 @@ export default class SliderBarHandle extends Component {
       />
     );
   }
-};
+}

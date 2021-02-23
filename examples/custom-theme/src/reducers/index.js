@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,9 +23,7 @@ import {handleActions} from 'redux-actions';
 
 import keplerGlReducer from 'kepler.gl/reducers';
 
-import {
-  INIT
-} from '../actions';
+import {INIT} from '../actions';
 
 // INITIAL_APP_STATE
 const initialAppState = {
@@ -33,12 +31,15 @@ const initialAppState = {
 };
 
 // App reducer
-export const appReducer = handleActions({
-  [INIT]: (state) => ({
-    ...state,
-    loaded: true
-  })
-}, initialAppState);
+export const appReducer = handleActions(
+  {
+    [INIT]: state => ({
+      ...state,
+      loaded: true
+    })
+  },
+  initialAppState
+);
 
 // export demoReducer to be combined in website app
 export default combineReducers({

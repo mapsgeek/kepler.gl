@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -21,41 +21,32 @@
 import React, {Component} from 'react';
 import PropTypes from 'prop-types';
 import classnames from 'classnames';
-import uniq from 'lodash.uniq';
+import uniqBy from 'lodash.uniqby';
 import listensToClickOutside from 'react-onclickoutside';
 import styled from 'styled-components';
 
 import Accessor from './accessor';
 import ChickletedInput from './chickleted-input';
 import Typeahead from './typeahead';
-import {Delete} from 'components/common/icons';
+import {Delete, ArrowDown} from 'components/common/icons';
 import DropdownList, {ListItem} from './dropdown-list';
 
-/**
- * Converts non-arrays to arrays.  Leaves arrays alone.  Converts
- * undefined values to empty arrays ([] instead of [undefined]).
- * Otherwise, just returns [item] for non-array items.
- *
- * @param {*} item
- * @returns {array} boom! much array. very indexed. so useful.
- */
-function _toArray(item) {
-  if (Array.isArray(item)) {
-    return item;
-  }
+import {toArray} from 'utils/utils';
+import {injectIntl} from 'react-intl';
+import {FormattedMessage} from 'localization';
 
-  if (typeof item === 'undefined' || item === null) {
-    return [];
-  }
-
-  return [item];
-}
-
-const StyledDropdownSelect = styled.div`
+export const StyledDropdownSelect = styled.div.attrs({
+  className: 'item-selector__dropdown'
+})`
   ${props =>
     props.inputTheme === 'secondary'
       ? props.theme.secondaryInput
+      : props.inputTheme === 'light'
+      ? props.theme.inputLT
       : props.theme.input};
+
+  height: ${props =>
+    props.size === 'small' ? props.theme.inputBoxHeightSmall : props.theme.inputBoxHeight};
 
   .list__item__anchor {
     ${props => props.theme.dropdownListAnchor};
@@ -64,27 +55,51 @@ const StyledDropdownSelect = styled.div`
 
 const DropdownSelectValue = styled.span`
   color: ${props =>
-    props.hasPlaceholder
+    props.hasPlaceholder && props.inputTheme === 'light'
+      ? props.theme.selectColorPlaceHolderLT
+      : props.hasPlaceholder
       ? props.theme.selectColorPlaceHolder
+      : props.inputTheme === 'light'
+      ? props.theme.selectColorLT
       : props.theme.selectColor};
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  .list__item {
+    ${props =>
+      props.inputTheme === 'light' ? props.theme.dropdownListItemLT : props.theme.dropdownListItem};
+  }
+
+  .list__item__anchor {
+    ${props =>
+      props.inputTheme === 'light'
+        ? props.theme.dropdownListAnchorLT
+        : props.theme.dropdownListAnchor};
+  }
 `;
 
-const DropdownSelectErase = styled.div`
-  margin-left: 6px;
+const DropdownSelectActionRight = styled.div`
+  margin-right: 6px;
   display: flex;
+  color: ${props => props.theme.subtextColor};
+
+  :hover {
+    color: ${props => props.theme.textColor};
+  }
 `;
 
 const DropdownWrapper = styled.div`
   border: 0;
   width: 100%;
   left: 0;
-  z-index: 100;
+  z-index: ${props => props.theme.dropdownWrapperZ};
   position: absolute;
-  bottom: ${props =>
-    props.placement === 'top' ? props.theme.inputBoxHeight : 'auto'};
-  margin-top: ${props => (props.placement === 'bottom' ? '4px' : 'auto')};
-  margin-bottom: ${props => (props.placement === 'top' ? '4px' : 'auto')};
+  bottom: ${props => (props.placement === 'top' ? props.theme.inputBoxHeight : 'auto')};
+  margin-top: ${props =>
+    props.placement === 'bottom' ? `${props.theme.dropdownWapperMargin}px` : 'auto'};
+  margin-bottom: ${props =>
+    props.placement === 'top' ? `${props.theme.dropdownWapperMargin}px` : 'auto'};
 `;
 
 class ItemSelector extends Component {
@@ -103,6 +118,7 @@ class ItemSelector extends Component {
     // optional properties
     fixedOptions: PropTypes.arrayOf(PropTypes.any),
     erasable: PropTypes.bool,
+    showArrow: PropTypes.bool,
     displayOption: PropTypes.oneOfType([PropTypes.string, PropTypes.func]),
     getOptionValue: PropTypes.oneOfType([PropTypes.string, PropTypes.func]),
     filterOption: PropTypes.oneOfType([PropTypes.string, PropTypes.func]),
@@ -114,13 +130,16 @@ class ItemSelector extends Component {
     onBlur: PropTypes.func,
     placeholder: PropTypes.string,
     closeOnSelect: PropTypes.bool,
+    typeaheadPlaceholder: PropTypes.string,
     DropdownHeaderComponent: PropTypes.func,
     DropDownRenderComponent: PropTypes.func,
-    DropDownLineItemRenderComponent: PropTypes.func
+    DropDownLineItemRenderComponent: PropTypes.func,
+    CustomChickletComponent: PropTypes.func
   };
 
   static defaultProps = {
     erasable: false,
+    showArrow: false,
     placement: 'bottom',
     selectedItems: [],
     displayOption: null,
@@ -129,7 +148,7 @@ class ItemSelector extends Component {
     fixedOptions: null,
     inputTheme: 'primary',
     multiSelect: true,
-    placeholder: 'Enter a value',
+    placeholder: 'placeholder.enterValue',
     closeOnSelect: true,
     searchable: true,
     dropdownHeader: null,
@@ -188,10 +207,10 @@ class ItemSelector extends Component {
       this.props.getOptionValue || this.props.displayOption
     );
 
-    const previousSelected = _toArray(this.props.selectedItems);
+    const previousSelected = toArray(this.props.selectedItems);
 
     if (this.props.multiSelect) {
-      const items = uniq(previousSelected.concat(_toArray(item).map(getValue)));
+      const items = uniqBy(previousSelected.concat(toArray(item)), getValue);
       this.props.onChange(items);
     } else {
       this.props.onChange(getValue(item));
@@ -208,7 +227,8 @@ class ItemSelector extends Component {
     this.props.onChange(null);
   };
 
-  _showTypeahead = () => {
+  _showTypeahead = e => {
+    e.stopPropagation();
     if (!this.props.disabled) {
       this.setState({
         showTypeahead: true
@@ -216,7 +236,7 @@ class ItemSelector extends Component {
     }
   };
 
-  _renderDropdown() {
+  _renderDropdown(intl) {
     return (
       <DropdownWrapper placement={this.props.placement}>
         <Typeahead
@@ -229,39 +249,41 @@ class ItemSelector extends Component {
           options={this.props.options}
           filterOption={this.props.filterOption}
           fixedOptions={this.props.fixedOptions}
-          placeholder="Search"
+          placeholder={
+            this.props.typeaheadPlaceholder || intl
+              ? intl.formatMessage({id: 'placeholder.search'})
+              : 'Search'
+          }
           onOptionSelected={this._selectItem}
           customListComponent={this.props.DropDownRenderComponent}
           customListHeaderComponent={this.props.DropdownHeaderComponent}
           customListItemComponent={this.props.DropDownLineItemRenderComponent}
-          displayOption={Accessor.generateOptionToStringFor(
-            this.props.displayOption
-          )}
+          displayOption={Accessor.generateOptionToStringFor(this.props.displayOption)}
           searchable={this.props.searchable}
           showOptionsWhenEmpty
-          selectedItems={_toArray(this.props.selectedItems)}
+          selectedItems={toArray(this.props.selectedItems)}
+          light={this.props.inputTheme === 'light'}
         />
       </DropdownWrapper>
     );
   }
 
   render() {
-    const selected = _toArray(this.props.selectedItems);
+    const selected = toArray(this.props.selectedItems);
     const hasValue = selected.length;
-    const displayOption = Accessor.generateOptionToStringFor(
-      this.props.displayOption
-    );
+    const displayOption = Accessor.generateOptionToStringFor(this.props.displayOption);
 
     const dropdownSelectProps = {
-      className: classnames(`item-selector__dropdown`, {
+      className: classnames({
         active: this.state.showTypeahead
       }),
       disabled: this.props.disabled,
       onClick: this._showTypeahead,
-      onFocus: this._showPopover,
       error: this.props.isError,
-      inputTheme: this.props.inputTheme
+      inputTheme: this.props.inputTheme,
+      size: this.props.size
     };
+    const intl = this.props.intl;
 
     return (
       <div className="item-selector">
@@ -270,36 +292,48 @@ class ItemSelector extends Component {
           {this.props.multiSelect ? (
             <ChickletedInput
               {...dropdownSelectProps}
-              selectedItems={_toArray(this.props.selectedItems)}
+              selectedItems={toArray(this.props.selectedItems)}
               placeholder={this.props.placeholder}
               displayOption={displayOption}
               removeItem={this._removeItem}
+              CustomChickletComponent={this.props.CustomChickletComponent}
+              inputTheme={this.props.inputTheme}
             />
           ) : (
             <StyledDropdownSelect {...dropdownSelectProps}>
-              <DropdownSelectValue hasPlaceholder={!hasValue} className="item-selector__dropdown__value">
+              <DropdownSelectValue
+                hasPlaceholder={!hasValue}
+                inputTheme={this.props.inputTheme}
+                className="item-selector__dropdown__value"
+              >
                 {hasValue ? (
                   <this.props.DropDownLineItemRenderComponent
                     displayOption={displayOption}
                     value={selected[0]}
+                    light={this.props.inputTheme === 'light'}
                   />
                 ) : (
-                  this.props.placeholder
+                  <FormattedMessage id={this.props.placeholder || 'placeholder.selectValue'} />
                 )}
               </DropdownSelectValue>
               {this.props.erasable && hasValue ? (
-                <DropdownSelectErase>
+                <DropdownSelectActionRight>
                   <Delete height="12px" onClick={this._onErase} />
-                </DropdownSelectErase>
+                </DropdownSelectActionRight>
+              ) : this.props.showArrow ? (
+                <DropdownSelectActionRight>
+                  <ArrowDown height="14px" onClick={this._showTypeahead} />
+                </DropdownSelectActionRight>
               ) : null}
             </StyledDropdownSelect>
           )}
           {/* this part is used to built the list */}
-          {this.state.showTypeahead && this._renderDropdown()}
+          {this.state.showTypeahead && this._renderDropdown(intl)}
         </div>
       </div>
     );
   }
-};
+}
 
-export default listensToClickOutside(ItemSelector);
+export const ItemSelectorListen = listensToClickOutside(ItemSelector);
+export default injectIntl(listensToClickOutside(ItemSelector));

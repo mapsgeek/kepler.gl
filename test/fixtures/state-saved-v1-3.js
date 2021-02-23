@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -20,7 +20,7 @@
 
 import {KeplerGlLayers} from 'layers';
 const {PointLayer, HexagonLayer} = KeplerGlLayers;
-import {DEFAULT_TEXT_LABEL} from 'layers/layer-factory';
+import {DEFAULT_TEXT_LABEL, DEFAULT_COLOR_UI} from 'layers/layer-factory';
 
 // saved state v1 with split maps
 export const savedStateV1 = {
@@ -225,14 +225,7 @@ export const savedStateV1 = {
                   name: 'ColorBrewer YlGn-6',
                   type: 'sequential',
                   category: 'ColorBrewer',
-                  colors: [
-                    '#006837',
-                    '#31a354',
-                    '#78c679',
-                    '#addd8e',
-                    '#d9f0a3',
-                    '#ffffcc'
-                  ],
+                  colors: ['#006837', '#31a354', '#78c679', '#addd8e', '#d9f0a3', '#ffffcc'],
                   reversed: true
                 },
                 radiusRange: [0, 50]
@@ -262,13 +255,7 @@ export const savedStateV1 = {
                   name: 'Uber Viz Diverging 1',
                   type: 'diverging',
                   category: 'Uber',
-                  colors: [
-                    '#00939C',
-                    '#85C4C8',
-                    '#FEEEE8',
-                    '#EC9370',
-                    '#C22E00'
-                  ],
+                  colors: ['#00939C', '#85C4C8', '#FEEEE8', '#EC9370', '#C22E00'],
                   reversed: false
                 },
                 coverage: 1,
@@ -292,13 +279,7 @@ export const savedStateV1 = {
         interactionConfig: {
           tooltip: {
             fieldsToShow: {
-              fm8v2jcza: [
-                'deliver_radius',
-                'boolean',
-                'num_boolean',
-                'int',
-                'boolean_1'
-              ]
+              fm8v2jcza: ['deliver_radius', 'boolean', 'num_boolean', 'int', 'boolean_1']
             },
             enabled: true
           },
@@ -374,13 +355,15 @@ mergedLayer0.config = {
       value: null
     }
   },
+  hidden: false,
   isVisible: true,
   colorField: {
     name: 'deliver_radius',
     type: 'integer',
-    id: 'deliver_radius',
     format: '',
-    tableFieldIndex: 1
+    fieldIdx: 0,
+    analyzerType: 'INT',
+    valueAccessor: values => values[0]
   },
   colorDomain: [1000, 1000, 2000, 2000, 2000, 3000, 3000, 3000, 3000],
   highlightColor: [252, 242, 26, 255],
@@ -392,13 +375,18 @@ mergedLayer0.config = {
   sizeField: {
     name: 'deliver_radius',
     type: 'integer',
-    id: 'deliver_radius',
     format: '',
-    tableFieldIndex: 1
+    fieldIdx: 0,
+    analyzerType: 'INT',
+    valueAccessor: values => values[0]
   },
   sizeScale: 'sqrt',
   sizeDomain: [1000, 3000],
   textLabel: [DEFAULT_TEXT_LABEL],
+  colorUI: {
+    color: DEFAULT_COLOR_UI,
+    colorRange: DEFAULT_COLOR_UI
+  },
   visConfig: {
     radius: 10,
     fixedRadius: true,
@@ -410,33 +398,20 @@ mergedLayer0.config = {
       name: 'ColorBrewer YlGn-6',
       type: 'sequential',
       category: 'ColorBrewer',
-      colors: [
-        '#006837',
-        '#31a354',
-        '#78c679',
-        '#addd8e',
-        '#d9f0a3',
-        '#ffffcc'
-      ],
+      colors: ['#006837', '#31a354', '#78c679', '#addd8e', '#d9f0a3', '#ffffcc'],
       reversed: true
     },
     strokeColorRange: {
       name: 'ColorBrewer YlGn-6',
       type: 'sequential',
       category: 'ColorBrewer',
-      colors: [
-        '#006837',
-        '#31a354',
-        '#78c679',
-        '#addd8e',
-        '#d9f0a3',
-        '#ffffcc'
-      ],
+      colors: ['#006837', '#31a354', '#78c679', '#addd8e', '#d9f0a3', '#ffffcc'],
       reversed: true
     },
     radiusRange: [0, 50],
     strokeColor: [18, 147, 154]
-  }
+  },
+  animation: {enabled: false}
 };
 
 const mergedLayer1 = new HexagonLayer({
@@ -457,6 +432,7 @@ mergedLayer1.config = {
       fieldIdx: 2
     }
   },
+  hidden: false,
   isVisible: true,
   colorField: null,
   colorDomain: [0, 1],
@@ -467,6 +443,10 @@ mergedLayer1.config = {
   sizeScale: 'linear',
   sizeDomain: [0, 1],
   textLabel: [DEFAULT_TEXT_LABEL],
+  colorUI: {
+    color: DEFAULT_COLOR_UI,
+    colorRange: DEFAULT_COLOR_UI
+  },
   visConfig: {
     opacity: 0.8,
     worldUnitSize: 2.73,
@@ -486,7 +466,8 @@ mergedLayer1.config = {
     colorAggregation: 'average',
     sizeAggregation: 'average',
     enable3d: false
-  }
+  },
+  animation: {enabled: false}
 };
 
 export const mergedLayers = [mergedLayer0, mergedLayer1];
@@ -494,14 +475,14 @@ export const mergedLayers = [mergedLayer0, mergedLayer1];
 export const mergedSplitMaps = [
   {
     layers: {
-      f24uw1: {isAvailable: true, isVisible: false},
-      '9x77w7h': {isAvailable: true, isVisible: true}
+      f24uw1: false,
+      '9x77w7h': true
     }
   },
   {
     layers: {
-      f24uw1: {isAvailable: true, isVisible: true},
-      '9x77w7h': {isAvailable: true, isVisible: false}
+      f24uw1: true,
+      '9x77w7h': false
     }
   }
 ];

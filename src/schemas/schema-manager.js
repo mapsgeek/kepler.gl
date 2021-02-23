@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -26,19 +26,26 @@ import mapStyleSchema from './map-style-schema';
 import mapStateSchema from './map-state-schema';
 
 import {CURRENT_VERSION, VERSIONS} from './versions';
+import {isPlainObject} from 'utils/utils';
 
-const REDUCER_SCHEMAS = {
+export const reducerSchema = {
   visState: visStateSchema,
   mapState: mapStateSchema,
   mapStyle: mapStyleSchema
 };
 
-class KeplerGLSchema {
-  constructor() {
-    this._validVersions = VERSIONS;
-    this._version = CURRENT_VERSION;
-    this._reducerSchemas = REDUCER_SCHEMAS;
-    this._datasetSchema = datasetSchema;
+/** @type {typeof import('./schema-manager').KeplerGLSchema} */
+export class KeplerGLSchema {
+  constructor({
+    reducers = reducerSchema,
+    datasets = datasetSchema,
+    validVersions = VERSIONS,
+    version = CURRENT_VERSION
+  } = {}) {
+    this._validVersions = validVersions;
+    this._version = version;
+    this._reducerSchemas = reducers;
+    this._datasetSchema = datasets;
 
     this._datasetLastSaved = null;
     this._savedDataset = null;
@@ -67,8 +74,8 @@ class KeplerGLSchema {
    * }
    *
    * Get config and data of current map to save
-   * @param {Object} state
-   * @returns {{datasets: Object[], config: Object, info: Object}} app state to save
+   * @param state
+   * @returns app state to save
    */
   save(state) {
     return {
@@ -76,22 +83,40 @@ class KeplerGLSchema {
       config: this.getConfigToSave(state),
       info: {
         app: 'kepler.gl',
-        created_at: new Date().toString()
+        created_at: new Date().toString(),
+        ...this.getMapInfo(state)
       }
     };
   }
 
+  getMapInfo(state) {
+    return state.visState.mapInfo;
+  }
+  /**
+   *  Load saved map, argument can be (datasets, config) or ({datasets, config})
+   * @param savedDatasets
+   * @param savedConfig
+   */
   load(savedDatasets, savedConfig) {
+    // if pass dataset and config in as a single object
+    if (
+      arguments.length === 1 &&
+      isPlainObject(arguments[0]) &&
+      (Array.isArray(arguments[0].datasets) || isPlainObject(arguments[0].config))
+    ) {
+      return this.load(arguments[0].datasets, arguments[0].config);
+    }
+
     return {
-      datasets: this.parseSavedData(savedDatasets),
-      config: savedConfig ? this.parseSavedConfig(savedConfig) : undefined
+      ...(Array.isArray(savedDatasets) ? {datasets: this.parseSavedData(savedDatasets)} : {}),
+      ...(savedConfig ? {config: this.parseSavedConfig(savedConfig)} : {})
     };
   }
 
   /**
    * Get data to save
-   * @param {Object} state - app state
-   * @returns {{version: String, data: Object}} - dataset to save
+   * @param state - app state
+   * @returns - dataset to save
    */
   getDatasetToSave(state) {
     const dataChangedSinceLastSave = this.hasDataChanged(state);
@@ -122,7 +147,7 @@ class KeplerGLSchema {
     const config = Object.keys(this._reducerSchemas).reduce(
       (accu, key) => ({
         ...accu,
-        ...this._reducerSchemas[key][this._version].save(state[key])
+        ...(state[key] ? this._reducerSchemas[key][this._version].save(state[key]) : {})
       }),
       {}
     );
@@ -135,8 +160,8 @@ class KeplerGLSchema {
 
   /**
    * Parse saved data
-   * @param {Array} datasets
-   * @returns {Object | null} - data to save
+   * @param datasets
+   * @returns - dataset to pass to addDataToMap
    */
   parseSavedData(datasets) {
     return datasets.reduce((accu, ds) => {
@@ -151,10 +176,6 @@ class KeplerGLSchema {
 
   /**
    * Parse saved App config
-   * @param {String} opt.version - config version
-   * @param {Object} opt.config - saved config
-   * @param {Object} state - current App State
-   * @returns {Object | null} - parsed config
    */
   parseSavedConfig({version, config}, state = {}) {
     const validVersion = this.validateVersion(version);
@@ -164,27 +185,23 @@ class KeplerGLSchema {
 
     return Object.keys(config).reduce(
       (accu, key) => ({
-          ...accu,
-          ...(key in this._reducerSchemas
-            ? this._reducerSchemas[key][validVersion].load(
-                config[key]
-              )
-            : {})
-        }),
+        ...accu,
+        ...(key in this._reducerSchemas
+          ? this._reducerSchemas[key][validVersion].load(config[key])
+          : {})
+      }),
       {}
     );
   }
 
   /**
    * Validate version
-   * @param {String} version
-   * @returns {String | null} validVersion
+   * @param version
+   * @returns validVersion
    */
   validateVersion(version) {
     if (!version) {
-      Console.error(
-        'There is no version number associated with this saved map'
-      );
+      Console.error('There is no version number associated with this saved map');
       return null;
     }
 
@@ -198,8 +215,8 @@ class KeplerGLSchema {
 
   /**
    * Check if data has changed since last save
-   * @param {Object} state
-   * @returns {boolean} - whether data has changed or not
+   * @param state
+   * @returns - whether data has changed or not
    */
   hasDataChanged(state) {
     return this._datasetLastSaved !== state.visState.datasets;

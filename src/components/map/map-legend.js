@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,24 +19,25 @@
 // THE SOFTWARE.
 
 import React from 'react';
-import PropTypes from 'prop-types';
 import styled from 'styled-components';
 import {rgb} from 'd3-color';
 import ColorLegend from 'components/common/color-legend';
-import {DIMENSIONS} from 'constants/default-settings';
-import {capitalizeFirstLetter} from 'utils/utils';
+import {CHANNEL_SCALES, DIMENSIONS} from 'constants/default-settings';
+import {FormattedMessage} from 'localization';
 
-const StyledMapControlLegend = styled.div`
-  padding: 10px 0 10px ${props => props.theme.mapControl.padding}px;
+export const StyledMapControlLegend = styled.div`
+  padding: 10px ${props => props.theme.mapControl.padding}px 10px
+    ${props => props.theme.mapControl.padding}px;
   font-size: 11px;
   border-bottom-color: ${props => props.theme.panelBorderColor};
   border-bottom-style: solid;
   border-bottom-width: ${props => (props.last ? 0 : '1px')};
+  width: ${props => props.width}px;
 
   .legend--layer_name {
     font-size: 12px;
     padding-right: ${props => props.theme.mapControl.padding}px;
-    color: ${props => props.theme.textColorHl};
+    color: ${props => props.theme.textColor};
     font-weight: 500;
   }
   .legend--layer_type {
@@ -55,7 +56,7 @@ const StyledMapControlLegend = styled.div`
   }
 
   .legend--layer_color_field {
-    color: ${props => props.theme.textColor};
+    color: ${props => props.theme.textColorHl};
     font-weight: 500;
   }
 
@@ -64,114 +65,138 @@ const StyledMapControlLegend = styled.div`
   }
 `;
 
-const VisualChannelMetric = ({name}) => (
-  <div className="legend--layer__title">
-    <span className="legend--layer_by">by </span>
-    <span className="legend--layer_color_field">{name}</span>
-  </div>
-);
+export const VisualChannelMetric = ({name}) => {
+  return (
+    <div className="legend--layer__title">
+      <span className="legend--layer_color_field">
+        <FormattedMessage id={name} />
+      </span>
+    </div>
+  );
+};
 
-const LayerSizeLegend = ({label, name}) => (
+export const LayerSizeLegend = ({label, name}) => (
   <div className="legend--layer_size-schema">
     <p>
-      <span className="legend--layer_by">{label}</span>
+      <span className="legend--layer_by">
+        <FormattedMessage id={label} />
+      </span>
+      <span className="legend--layer_by"> by </span>
     </p>
     <VisualChannelMetric name={name} />
   </div>
 );
 
-const propTypes = {
-  layers: PropTypes.arrayOf(PropTypes.object)
-};
+const SINGLE_COLOR_DOMAIN = [''];
 
-const SingleColorLegend = ({layer, width}) => (
+/** @type {typeof import('./map-legend').SingleColorLegend} */
+export const SingleColorLegend = React.memo(({width, color}) => (
   <ColorLegend
     scaleType="ordinal"
     displayLabel={false}
-    domain={['']}
+    domain={SINGLE_COLOR_DOMAIN}
     fieldType={null}
-    range={[rgb(...layer.config.color).toString()]}
+    range={{colors: [rgb(...color).toString()]}}
     width={width}
   />
-);
+));
 
-const MultiColorLegend = ({layer, width}) => {
-  const {visConfig, colorField, colorScale, colorDomain} = layer.config;
+SingleColorLegend.displayName = 'SingleColorLegend';
+
+/** @type {typeof import('./map-legend').LayerColorLegend} */
+export const LayerColorLegend = React.memo(({description, config, width, colorChannel}) => {
+  const enableColorBy = description.measure;
+  const {scale, field, domain, range, property} = colorChannel;
+  const [colorScale, colorField, colorDomain] = [scale, field, domain].map(k => config[k]);
+  const colorRange = config.visConfig[range];
 
   return (
-    <ColorLegend
-      scaleType={colorScale}
-      displayLabel
-      domain={colorDomain}
-      fieldType={(colorField && colorField.type) || 'real'}
-      range={visConfig.colorRange.colors}
-      width={width}
-    />
+    <div>
+      <div className="legend--layer_color-schema">
+        <div>
+          {enableColorBy ? <VisualChannelMetric name={enableColorBy} /> : null}
+          <div className="legend--layer_color-legend">
+            {enableColorBy ? (
+              <ColorLegend
+                scaleType={colorScale}
+                displayLabel
+                domain={colorDomain}
+                fieldType={(colorField && colorField.type) || 'real'}
+                range={colorRange}
+                width={width}
+              />
+            ) : (
+              <SingleColorLegend
+                color={config.visConfig[property] || config[property] || config.color}
+                width={width}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
-};
+});
 
-const MapLegend = ({layers}) => (
-  <div>
+LayerColorLegend.displayName = 'LayerColorLegend';
+
+const isColorChannel = visualChannel =>
+  [CHANNEL_SCALES.color, CHANNEL_SCALES.colorAggr].includes(visualChannel.channelScaleType);
+
+/** @type {typeof import('./map-legend').default }> */
+const MapLegend = ({layers = [], width, options}) => (
+  <div className="map-legend">
     {layers.map((layer, index) => {
-      if (!layer.isValidToSave()) {
+      if (!layer.isValidToSave() || layer.config.hidden) {
         return null;
       }
-
-      const colorChannelConfig = layer.getVisualChannelDescription('color');
-      const enableColorBy = colorChannelConfig.measure;
-      const width = DIMENSIONS.mapControl.width - 2 * DIMENSIONS.mapControl.padding;
+      const containerW = width || DIMENSIONS.mapControl.width;
+      const colorChannels = Object.values(layer.visualChannels).filter(isColorChannel);
+      const nonColorChannels = Object.values(layer.visualChannels).filter(
+        vc => !isColorChannel(vc)
+      );
 
       return (
         <StyledMapControlLegend
           className="legend--layer"
           last={index === layers.length - 1}
           key={index}
+          width={containerW}
         >
-          <div className="legend--layer_name">{layer.config.label}</div>
-          <div className="legend--layer_type">{`${capitalizeFirstLetter(
-            layer.name
-          )} color`}</div>
-          <div className="legend--layer_color-schema">
-            <div>
-              {enableColorBy ? (
-                <VisualChannelMetric name={enableColorBy} />
-              ) : null}
-              <div className="legend--layer_color-legend">
-                {enableColorBy ?
-                  <MultiColorLegend layer={layer} width={width}/> :
-                  <SingleColorLegend layer={layer} width={width}/>
-                }
-              </div>
-            </div>
-          </div>
-          {Object.keys(layer.visualChannels)
-            .filter(k => k !== 'color')
-            .map(key => {
-              const matchCondition =
-                !layer.visualChannels[key].condition ||
-                layer.visualChannels[key].condition(layer.config);
-              const enabled =
-                layer.config[layer.visualChannels[key].field] ||
-                layer.visualChannels[key].defaultMeasure;
+          {options?.showLayerName !== false ? (
+            <div className="legend--layer_name">{layer.config.label}</div>
+          ) : null}
+          {colorChannels.map(colorChannel =>
+            !colorChannel.condition || colorChannel.condition(layer.config) ? (
+              <LayerColorLegend
+                key={colorChannel.key}
+                description={layer.getVisualChannelDescription(colorChannel.key)}
+                config={layer.config}
+                width={containerW - 2 * DIMENSIONS.mapControl.padding}
+                colorChannel={colorChannel}
+              />
+            ) : null
+          )}
+          {nonColorChannels.map(visualChannel => {
+            const matchCondition =
+              !visualChannel.condition || visualChannel.condition(layer.config);
+            const enabled = layer.config[visualChannel.field] || visualChannel.defaultMeasure;
 
-              const visualChannelDescription = layer.getVisualChannelDescription(key);
-              if (matchCondition && enabled) {
-                return (
-                  <LayerSizeLegend
-                    key={key}
-                    label={visualChannelDescription.label}
-                    name={visualChannelDescription.measure}
-                  />
-                );
-              }
-              return null;
-            })}
+            const description = layer.getVisualChannelDescription(visualChannel.key);
+
+            return matchCondition && enabled ? (
+              <LayerSizeLegend
+                key={visualChannel.key}
+                label={description.label}
+                name={description.measure}
+              />
+            ) : null;
+          })}
         </StyledMapControlLegend>
       );
     })}
   </div>
 );
 
-MapLegend.propTypes = propTypes;
-
+/** @type {typeof import('./map-legend').default }> */
 export default MapLegend;

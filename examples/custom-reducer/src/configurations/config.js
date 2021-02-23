@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -30,11 +30,7 @@ export default {
           config: {
             dataId: 'tree_data',
             label: 'location',
-            color: [
-              18,
-              147,
-              154
-            ],
+            color: [18, 147, 154],
             columns: {
               lat: 'Location_latitude',
               lng: 'Location_longitude',
@@ -51,20 +47,10 @@ export default {
                 name: 'Ice And Fire',
                 type: 'diverging',
                 category: 'Uber',
-                colors: [
-                  '#D50255',
-                  '#FEAD54',
-                  '#FEEDB1',
-                  '#E8FEB5',
-                  '#49E3CE',
-                  '#0198BD'
-                ],
+                colors: ['#D50255', '#FEAD54', '#FEEDB1', '#E8FEB5', '#49E3CE', '#0198BD'],
                 reversed: true
               },
-              radiusRange: [
-                33.6,
-                96.2
-              ],
+              radiusRange: [33.6, 96.2],
               'hi-precision': false
             }
           },
@@ -87,11 +73,7 @@ export default {
           config: {
             dataId: 'tree_data',
             label: 'Density',
-            color: [
-              23,
-              184,
-              190
-            ],
+            color: [23, 184, 190],
             columns: {
               lat: 'Location_latitude',
               lng: 'Location_longitude'
@@ -105,29 +87,13 @@ export default {
                 name: 'ColorBrewer GnBu-6',
                 type: 'sequential',
                 category: 'ColorBrewer',
-                colors: [
-                  '#f0f9e8',
-                  '#ccebc5',
-                  '#a8ddb5',
-                  '#7bccc4',
-                  '#43a2ca',
-                  '#0868ac'
-                ],
+                colors: ['#f0f9e8', '#ccebc5', '#a8ddb5', '#7bccc4', '#43a2ca', '#0868ac'],
                 reversed: false
               },
               coverage: 1,
-              sizeRange: [
-                0,
-                500
-              ],
-              percentile: [
-                0,
-                100
-              ],
-              elevationPercentile: [
-                0,
-                100
-              ],
+              sizeRange: [0, 500],
+              percentile: [0, 100],
+              elevationPercentile: [0, 100],
               elevationScale: 5,
               'hi-precision': false,
               colorAggregation: 'average',
@@ -146,18 +112,15 @@ export default {
       interactionConfig: {
         tooltip: {
           fieldsToShow: {
-            tree_data: [
-              'TreeID',
-              'Species',
-              'Address',
-              'Has_Species',
-              'SiteInfo'
-            ]
+            tree_data: ['TreeID', 'Species', 'Address', 'Has_Species', 'SiteInfo']
           },
           enabled: true
         },
         brush: {
           size: 0.5,
+          enabled: false
+        },
+        geocoder: {
           enabled: false
         }
       },
@@ -188,4 +151,4 @@ export default {
       }
     }
   }
-}
+};

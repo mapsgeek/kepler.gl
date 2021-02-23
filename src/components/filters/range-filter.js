@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,21 +19,25 @@
 // THE SOFTWARE.
 
 import React from 'react';
-import RangeSlider from 'components/common/range-slider';
+import RangeSliderFactory from 'components/common/range-slider';
 
-const RangeFilter = ({filter, setFilter}) => (
-  <div>
-    <RangeSlider
-      range={filter.domain}
-      value0={filter.value[0]}
-      value1={filter.value[1]}
-      step={filter.step}
-      histogram={filter.histogram}
-      isEnlarged={filter.isEnlarged}
-      onChange={setFilter}
-      inputTheme="secondary"
-    />
-  </div>
-);
+RangeFilterFactory.deps = [RangeSliderFactory];
 
-export default RangeFilter;
+export default function RangeFilterFactory(RangeSlider) {
+  const RangeFilter = ({filter, setFilter}) => (
+    <div>
+      <RangeSlider
+        range={filter.domain}
+        value0={filter.value[0]}
+        value1={filter.value[1]}
+        step={filter.step}
+        histogram={filter.histogram}
+        isEnlarged={filter.isEnlarged}
+        onChange={setFilter}
+        inputTheme="secondary"
+      />
+    </div>
+  );
+
+  return RangeFilter;
+}

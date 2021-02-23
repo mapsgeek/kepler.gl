@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -20,6 +20,7 @@
 
 import React, {Component} from 'react';
 import PropTypes from 'prop-types';
+import {FormattedMessage} from 'localization';
 
 import styled from 'styled-components';
 import Modal from 'react-modal';
@@ -28,9 +29,9 @@ import {Button} from 'components/common/styled-components';
 import {media} from 'styles/media-breakpoints';
 
 const ModalContentWrapper = styled.div`
-  overflow-y: scroll;
-  max-width: 960px;
-  max-height: 70vh;
+  overflow-y: auto;
+  max-width: 70vw;
+  max-height: 85vh;
   padding: 24px 72px 40px;
   position: relative;
   top: 92px;
@@ -43,15 +44,22 @@ const ModalContentWrapper = styled.div`
   box-sizing: border-box;
   font-size: 12px;
   color: ${props => props.theme.labelColorLT};
-  ${props => props.cssStyle || ''};
+
   ${media.portable`
     padding: 12px 36px 24px;
+    max-width: 80vw;
   `}
+
+  ${media.palm`
+    max-width: 100vw;
+  `}
+
+  ${props => props.cssStyle || ''};
 `;
 
 const ModalContent = styled.div`
   position: relative;
-  z-index: 10002;
+  z-index: ${props => props.theme.modalContentZ};
 `;
 
 export const ModalTitle = styled.div`
@@ -59,7 +67,7 @@ export const ModalTitle = styled.div`
   color: ${props => props.theme.modalTitleColor};
   margin-bottom: 10px;
   position: relative;
-  z-index: 10003;
+  z-index: ${props => props.theme.modalTitleZ};
 `;
 
 const StyledModalFooter = styled.div`
@@ -77,14 +85,14 @@ const StyledModalFooter = styled.div`
   ${media.palm`
     padding-top: 16px;
   `};
-  z-index: 10001;
+  z-index: ${props => props.theme.modalFooterZ};
 `;
 
 const CloseButton = styled.div`
   color: ${props => props.theme.titleColorLT};
   display: flex;
   justify-content: flex-end;
-  z-index: 10005;
+  z-index: ${props => props.theme.modalButtonZ};
   position: absolute;
   top: 24px;
   right: 24px;
@@ -102,31 +110,27 @@ const FooterActionWrapper = styled.div`
 const defaultCancelButton = {
   link: true,
   large: true,
-  children: 'Cancel'
+  children: 'modal.button.defaultCancel'
 };
 
 const defaultConfirmButton = {
+  cta: true,
   large: true,
   width: '160px',
-  children: 'Confirm'
+  children: 'modal.button.defaultConfirm'
 };
 
-export const ModalFooter = ({
-  cancel,
-  confirm,
-  cancelButton,
-  confirmButton
-}) => {
+export const ModalFooter = ({cancel, confirm, cancelButton, confirmButton}) => {
   const cancelButtonProps = {...defaultCancelButton, ...cancelButton};
   const confirmButtonProps = {...defaultConfirmButton, ...confirmButton};
   return (
     <StyledModalFooter className="modal--footer">
       <FooterActionWrapper>
-        <Button {...cancelButtonProps} onClick={cancel}>
-          {cancelButtonProps.children}
+        <Button className="modal--footer--cancel-button" {...cancelButtonProps} onClick={cancel}>
+          <FormattedMessage id={cancelButtonProps.children} />
         </Button>
-        <Button {...confirmButtonProps} onClick={confirm}>
-          {confirmButtonProps.children}
+        <Button className="modal--footer--confirm-button" {...confirmButtonProps} onClick={confirm}>
+          <FormattedMessage id={confirmButtonProps.children} />
         </Button>
       </FooterActionWrapper>
     </StyledModalFooter>
@@ -136,7 +140,7 @@ export const ModalFooter = ({
 class ModalDialog extends Component {
   static propTypes = {
     footer: PropTypes.bool,
-    close: PropTypes.func.isRequired,
+    close: PropTypes.bool,
     onConfirm: PropTypes.func,
     onCancel: PropTypes.func,
     confirmButton: PropTypes.object,
@@ -148,7 +152,7 @@ class ModalDialog extends Component {
 
   static defaultProps = {
     footer: false,
-    close: () => {},
+    close: true,
     onConfirm: () => {},
     onCancel: () => {},
     cancelButton: defaultCancelButton,
@@ -165,8 +169,8 @@ class ModalDialog extends Component {
         ariaHideApp={false}
         style={{
           overlay: {
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 1000,
+            backgroundColor: (props.theme && props.theme.modalOverlayBgd) || 'rgba(0, 0, 0, 0.5)',
+            zIndex: (props.theme && props.theme.modalOverLayZ) || 1000,
             // in case we want to override the modal dialog style
             ...props.style
           }
@@ -178,25 +182,26 @@ class ModalDialog extends Component {
           footer={props.footer}
         >
           {props.close && (
-            <CloseButton className="modal--close" onClick={props.close}>
+            <CloseButton className="modal--close" onClick={props.onCancel}>
               <Delete height="14px" />
             </CloseButton>
           )}
           <div>
             {props.title && (
-              <ModalTitle className="modal--title">{props.title}</ModalTitle>
+              <ModalTitle className="modal--title">
+                <FormattedMessage id={props.title} />
+              </ModalTitle>
             )}
             <ModalContent className="modal--body">{props.children}</ModalContent>
             {props.footer && (
               <ModalFooter
-                cancel={props.close}
+                cancel={props.onCancel}
                 confirm={props.onConfirm}
                 cancelButton={props.cancelButton}
                 confirmButton={props.confirmButton}
               />
             )}
           </div>
-
         </ModalContentWrapper>
       </Modal>
     );
@@ -221,7 +226,7 @@ const StyledModal = styled(ModalDialog)`
   `};
 
   :focus {
-    outline: 0
+    outline: 0;
   }
 `;
 

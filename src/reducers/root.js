@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -31,15 +31,32 @@ const initialCoreState = {};
 export function provideInitialState(initialState) {
   const coreReducer = coreReducerFactory(initialState);
 
-  const handleRegisterEntry = (state, {payload: {id, mint, mapboxApiAccessToken}}) => ({
-    // register a new entry to voyager reducer
+  const handleRegisterEntry = (
+    state,
+    {
+      payload: {
+        id,
+        mint,
+        mapboxApiAccessToken,
+        mapboxApiUrl,
+        mapStylesReplaceDefault,
+        initialUiState
+      }
+    }
+  ) => {
     // by default, always create a mint state even if the same id already exist
     // if state.id exist and mint=false, keep the existing state
-    ...state,
-    [id]: state[id] && mint === false ? state[id] : {
-      ...coreReducer(undefined, keplerGlInit({mapboxApiAccessToken}))
-    }
-  });
+    const previousState = state[id] && mint === false ? state[id] : undefined;
+
+    return {
+      // register entry to kepler.gl passing in mapbox config to mapStyle
+      ...state,
+      [id]: coreReducer(
+        previousState,
+        keplerGlInit({mapboxApiAccessToken, mapboxApiUrl, mapStylesReplaceDefault, initialUiState})
+      )
+    };
+  };
 
   const handleDeleteEntry = (state, {payload: id}) =>
     Object.keys(state).reduce(
@@ -67,14 +84,14 @@ export function provideInitialState(initialState) {
     });
 
     // perform additional state reducing (e.g. switch action.type etc...)
-    return handleActions(
-      {
-        [ActionTypes.REGISTER_ENTRY]: handleRegisterEntry,
-        [ActionTypes.DELETE_ENTRY]: handleDeleteEntry,
-        [ActionTypes.RENAME_ENTRY]: handleRenameEntry
-      },
-      initialCoreState
-    )(state, action);
+    const handlers = {
+      [ActionTypes.REGISTER_ENTRY]: handleRegisterEntry,
+      [ActionTypes.DELETE_ENTRY]: handleDeleteEntry,
+      [ActionTypes.RENAME_ENTRY]: handleRenameEntry
+    };
+
+    // @ts-ignore
+    return handleActions(handlers, initialCoreState)(state, action);
   };
 }
 
@@ -84,12 +101,15 @@ function mergeInitialState(saved = {}, provided = {}) {
   const keys = ['mapState', 'mapStyle', 'visState', 'uiState'];
 
   // shallow merge each reducer
-  return keys.reduce((accu, key) => ({
-    ...accu,
-    ...(saved[key] && provided[key] ?
-        {[key]: {...saved[key], ...provided[key]}} :
-        {[key]: saved[key] || provided[key] || {}})
-  }), {});
+  return keys.reduce(
+    (accu, key) => ({
+      ...accu,
+      ...(saved[key] && provided[key]
+        ? {[key]: {...saved[key], ...provided[key]}}
+        : {[key]: saved[key] || provided[key] || {}})
+    }),
+    {}
+  );
 }
 
 function decorate(target, savedInitialState = {}) {
@@ -180,7 +200,7 @@ function decorate(target, savedInitialState = {}) {
     const targetReducer = provideInitialState(merged);
 
     return decorate(targetReducer, merged);
-  }
+  };
 
   return target;
 }

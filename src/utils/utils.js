@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -18,6 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+// @ts-ignore
 import window from 'global/window';
 
 /**
@@ -45,19 +46,154 @@ export function isChrome() {
  * @returns {boolean} - yes or no
  */
 export function isPlainObject(obj) {
-  return (
-    obj === Object(obj) && typeof obj !== 'function' && !Array.isArray(obj)
-  );
+  return obj === Object(obj) && typeof obj !== 'function' && !Array.isArray(obj);
 }
 
 /**
- * whether null or undefined
- * @returns {boolean} - yes or no
+ * Capitalize first letter of a string
+ * @param {string} str
+ * @returns {string}
  */
-export function notNullorUndefined(d) {
-  return d !== undefined && d !== null;
+export function capitalizeFirstLetter(str) {
+  return typeof str === 'string' ? str.charAt(0).toUpperCase() + str.slice(1) : str;
 }
 
-export function capitalizeFirstLetter(str) {
-  return str.charAt(0).toUpperCase() + str.slice(1);
+/**
+ * Convert camel style names to title
+ * strokeColor -> Stroke Color
+ * @param {string} str
+ * @returns {string}
+ */
+export function camelToTitle(str) {
+  const breakWord = str.replace(/([A-Z])/g, ' $1');
+  return capitalizeFirstLetter(breakWord);
+}
+
+/**
+ * Convert names to camel style
+ * Stroke Color -> strokeColor
+ * @param {string} str
+ * @returns {string}
+ */
+export const camelize = str => {
+  return str.replace(/(?:^\w|[A-Z]|\b\w|\s+)/g, (match, index) => {
+    if (Number(match) === 0) return ''; // or if (/\s+/.test(match)) for white spaces
+    return index === 0 ? match.toLowerCase() : match.toUpperCase();
+  });
+};
+
+/**
+ * Returns the img url for a given map export option
+ * @param mode export option
+ * @return {string} url
+ */
+export function getHTMLMapModeTileUrl(mode) {
+  return `https://d1a3f4spazzrp4.cloudfront.net/kepler.gl/documentation/map-${mode.toLowerCase()}-mode.png`;
+}
+
+/**
+ * Converts non-arrays to arrays.  Leaves arrays alone.  Converts
+ * undefined values to empty arrays ([] instead of [undefined]).
+ * Otherwise, just returns [item] for non-array items.
+ *
+ * @param {*} item
+ * @returns {array} boom! much array. very indexed. so useful.
+ */
+export function toArray(item) {
+  if (Array.isArray(item)) {
+    return item;
+  }
+
+  if (typeof item === 'undefined' || item === null) {
+    return [];
+  }
+
+  return [item];
+}
+
+/**
+ * immutably insert value to an Array or Object
+ * @param {Array|Object} obj
+ * @param {Number|String} key
+ * @param {*} value
+ * @returns {Array|Object}
+ */
+export const insertValue = (obj, key, value) => {
+  if (Array.isArray(obj) && typeof key === 'number') {
+    return [...obj.slice(0, key), value, ...obj.slice(key + 1, obj.length)];
+  }
+
+  return {...obj, [key]: value};
+};
+
+/**
+ * check if value is a loose object including a plain object, array, function
+ * @param {*} value
+ */
+export function isObject(value) {
+  return value !== null && (typeof value === 'object' || typeof value === 'function');
+}
+
+const setPath = ([key, ...next], value, obj) => {
+  // is Object allows js object, array and function
+  if (!isObject(obj)) {
+    return obj;
+  }
+
+  if (next.length === 0) {
+    return insertValue(obj, key, value);
+  }
+
+  // @ts-ignore
+  return insertValue(obj, key, setPath(next, value, obj.hasOwnProperty(key) ? obj[key] : {}));
+};
+
+/**
+ * Immutable version of _.set
+ * @param {Array<String|Number>} path
+ * @param {*} value
+ * @param {Object} obj
+ * @returns {Object}
+ */
+// @ts-ignore
+export const set = (path, value, obj) => (obj === null ? obj : setPath(path, value, obj));
+
+/**
+ * Get error information of unknown type
+ * Extracts as much human readable information as possible
+ * Ensure result is an Error object suitable for throw or promise rejection
+ *
+ * @private
+ * @param {*}  err - Unknown error
+ * @return {string} - human readable error msg
+ */
+export function getError(err) {
+  if (!err) {
+    return 'Something went wrong';
+  }
+
+  if (typeof err === 'string') {
+    return err;
+  } else if (err instanceof Error) {
+    return err.message;
+  } else if (typeof err === 'object') {
+    return err.error
+      ? getError(err.error)
+      : err.err
+      ? getError(err.err)
+      : err.message
+      ? getError(err.message)
+      : JSON.stringify(err);
+  }
+
+  // @ts-ignore
+  return null;
+}
+
+export function arrayInsert(arr, index, val) {
+  if (!Array.isArray(arr)) {
+    return arr;
+  }
+
+  return [...arr.slice(0, index), val, ...arr.slice(index)];
 }

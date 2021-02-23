@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,12 +24,9 @@ import styled from 'styled-components';
 import {createSelector} from 'reselect';
 import {format} from 'd3-format';
 import moment from 'moment';
-import {
-  SCALE_TYPES,
-  SCALE_FUNC,
-  ALL_FIELD_TYPES
-} from 'constants/default-settings';
+import {SCALE_TYPES, SCALE_FUNC, ALL_FIELD_TYPES} from 'constants/default-settings';
 import {getTimeWidgetHintFormatter} from 'utils/filter-utils';
+import {isObject} from 'utils/utils';
 
 const ROW_H = 10;
 const GAP = 4;
@@ -70,7 +67,9 @@ const getQuantLabelFormat = (domain, fieldType) => {
   // quant scale can only be assigned to linear Fields: real, timestamp, integer
   return fieldType === ALL_FIELD_TYPES.timestamp
     ? getTimeLabelFormat(domain)
-    : !fieldType ? defaultFormat : getNumericLabelFormat(domain);
+    : !fieldType
+    ? defaultFormat
+    : getNumericLabelFormat(domain);
 };
 
 const getOrdinalLegends = scale => {
@@ -82,6 +81,14 @@ const getOrdinalLegends = scale => {
 };
 
 const getQuantLegends = (scale, labelFormat) => {
+  if (typeof scale.invertExtent !== 'function') {
+    // only quantile, quantize, threshold scale has invertExtent method
+    return {
+      data: [],
+      labels: []
+    };
+  }
+
   const labels = scale.range().map(d => {
     const invert = scale.invertExtent(d);
     return `${labelFormat(invert[0])} to ${labelFormat(invert[1])}`;
@@ -99,7 +106,7 @@ export default class ColorLegend extends Component {
     scaleType: PropTypes.string,
     domain: PropTypes.oneOfType([PropTypes.array, PropTypes.object]),
     fieldType: PropTypes.string,
-    range: PropTypes.arrayOf(PropTypes.string),
+    range: PropTypes.object,
     labelFormat: PropTypes.func
   };
 
@@ -116,36 +123,55 @@ export default class ColorLegend extends Component {
     this.labelFormatSelector,
     this.fieldTypeSelector,
     (domain, range, scaleType, labelFormat, fieldType) => {
-      const scaleFunction = SCALE_FUNC[scaleType];
-      // color scale can only be quantize, quantile or ordinal
-      const scale = scaleFunction()
-        .domain(domain)
-        .range(range);
-
-      if (scaleType === SCALE_TYPES.ordinal) {
-        return getOrdinalLegends(scale);
+      const empty = {
+        data: [],
+        labels: []
+      };
+      if (!range) {
+        return empty;
       }
+      if (isObject(range.colorLegends)) {
+        return {
+          data: Object.keys(range.colorLegends),
+          labels: Object.values(range.colorLegends)
+        };
+      } else if (Array.isArray(range.colorMap)) {
+        return {
+          data: range.colorMap.map(cm => cm[1]),
+          labels: range.colorMap.map(cm => cm[0])
+        };
+      } else if (Array.isArray(range.colors)) {
+        if (!domain || !scaleType) {
+          return empty;
+        }
 
-      const formatLabel =
-        labelFormat || getQuantLabelFormat(scale.domain(), fieldType);
+        const scaleFunction = SCALE_FUNC[scaleType];
+        // color scale can only be quantize, quantile or ordinal
+        const scale = scaleFunction()
+          .domain(domain)
+          .range(range.colors);
 
-      return getQuantLegends(scale, formatLabel);
+        if (scaleType === SCALE_TYPES.ordinal) {
+          return getOrdinalLegends(scale);
+        }
+
+        const formatLabel = labelFormat || getQuantLabelFormat(scale.domain(), fieldType);
+
+        return getQuantLegends(scale, formatLabel);
+      }
+      return empty;
     }
   );
 
   render() {
-    const {width, scaleType, domain, range, displayLabel = true} = this.props;
-
-    if (!domain || !range || !scaleType) {
-      return null;
-    }
+    const {width, displayLabel = true} = this.props;
 
     const legends = this.legendsSelector(this.props);
     const height = legends.data.length * (ROW_H + GAP);
 
     return (
       <StyledLegend>
-        <svg width={width - 24} height={height}>
+        <svg width={width} height={height}>
           {legends.data.map((color, idx) => (
             <LegendRow
               key={idx}
@@ -161,7 +187,7 @@ export default class ColorLegend extends Component {
   }
 }
 
-const LegendRow = ({label = '', displayLabel, color, idx}) => (
+export const LegendRow = ({label = '', displayLabel, color, idx}) => (
   <g transform={`translate(0, ${idx * (ROW_H + GAP)})`}>
     <rect width={RECT_W} height={ROW_H} style={{fill: color}} />
     <text x={RECT_W + 8} y={ROW_H - 1}>

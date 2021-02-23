@@ -1,4 +1,4 @@
-# Open modal
+# Replacing components
 
 Example showing how to replace kepler.gl default components using `injectComponents` method.
 
@@ -11,7 +11,7 @@ npm install
 or
 
 ```sh
-yarn --ignore-engines
+yarn
 ```
 
 

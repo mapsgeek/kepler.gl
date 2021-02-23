@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -18,16 +18,11 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-import {registerShaderModules, setParameters} from 'luma.gl';
-import brushingModule from 'shaderlib/brushing-module';
+import {setParameters} from '@luma.gl/core';
 import {LAYER_BLENDINGS} from 'constants/default-settings';
-import GL from 'luma.gl/constants';
+import GL from '@luma.gl/constants';
 
 const getGlConst = d => GL[d];
-
-export function onWebGLInitialized(gl) {
-  registerShaderModules([brushingModule], {ignoreMultipleRegistrations: true});
-}
 
 export function setLayerBlending(gl, layerBlending) {
   const blending = LAYER_BLENDINGS[layerBlending];
@@ -35,9 +30,13 @@ export function setLayerBlending(gl, layerBlending) {
 
   setParameters(gl, {
     [GL.BLEND]: true,
-    ...(blendFunc ? {
-      blendFunc: blendFunc.map(getGlConst),
-      blendEquation: Array.isArray(blendEquation) ? blendEquation.map(getGlConst) : getGlConst(blendEquation)
-    } : {})
+    ...(blendFunc
+      ? {
+          blendFunc: blendFunc.map(getGlConst),
+          blendEquation: Array.isArray(blendEquation)
+            ? blendEquation.map(getGlConst)
+            : getGlConst(blendEquation)
+        }
+      : {})
   });
-};
+}

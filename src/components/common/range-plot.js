@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -18,30 +18,108 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-import React, {Component} from 'react';
+import React, {useState, useCallback} from 'react';
 import PropTypes from 'prop-types';
-import {scaleLinear} from 'd3-scale';
-import moment from 'moment';
-import {max} from 'd3-array';
-import {createSelector} from 'reselect';
-import {LineSeries, XYPlot, CustomSVGSeries, Hint, MarkSeries} from 'react-vis';
-import styled from 'styled-components';
-import RangeBrush from './range-brush';
-import {getTimeWidgetHintFormatter} from 'utils/filter-utils';
-import {theme} from 'styles/base';
+import styled, {withTheme} from 'styled-components';
+import RangeBrushFactory from './range-brush';
+import HistogramPlotFactory from './histogram-plot';
+import LineChartFactory from './line-chart';
 
-const chartMargin = {top: 18, bottom: 0, left: 0, right: 0};
-const chartH = 52;
-const containerH = 78;
-const histogramStyle = {
-  highlightW: 0.7,
-  unHighlightedW: 0.4,
-  highlightedColor: theme.activeColor,
-  unHighlightedColor: theme.sliderBarColor
-};
+const StyledRangePlot = styled.div`
+  margin-bottom: ${props => props.theme.sliderBarHeight}px;
+  display: flex;
+  position: 'relative';
+`;
 
-export default class RangePlot extends Component {
-  static propTypes = {
+RangePlotFactory.deps = [RangeBrushFactory, HistogramPlotFactory, LineChartFactory];
+
+export default function RangePlotFactory(RangeBrush, HistogramPlot, LineChart) {
+  const RangePlot = ({
+    onBrush,
+    range,
+    value,
+    width,
+    plotType,
+    lineChart,
+    histogram,
+    isEnlarged,
+    isRanged,
+    theme,
+    ...chartProps
+  }) => {
+    const [brushing, setBrushing] = useState(false);
+    const [hoveredDP, onMouseMove] = useState(null);
+    const [enableChartHover, setEnableChartHover] = useState(false);
+    const height = isEnlarged ? theme.rangePlotHLarge : theme.rangePlotH;
+
+    const onBrushStart = useCallback(() => {
+      setBrushing(true);
+      onMouseMove(null);
+      setEnableChartHover(false);
+    }, [setBrushing, onMouseMove, setEnableChartHover]);
+
+    const onBrushEnd = useCallback(() => {
+      setBrushing(false);
+      setEnableChartHover(true);
+    }, [setBrushing, setEnableChartHover]);
+
+    const onMouseoverHandle = useCallback(() => {
+      onMouseMove(null);
+      setEnableChartHover(false);
+    }, [onMouseMove, setEnableChartHover]);
+
+    const onMouseoutHandle = useCallback(() => {
+      setEnableChartHover(true);
+    }, [setEnableChartHover]);
+
+    const brushComponent = (
+      <RangeBrush
+        onBrush={onBrush}
+        onBrushStart={onBrushStart}
+        onBrushEnd={onBrushEnd}
+        range={range}
+        value={value}
+        width={width}
+        height={height}
+        isRanged={isRanged}
+        onMouseoverHandle={onMouseoverHandle}
+        onMouseoutHandle={onMouseoutHandle}
+        {...chartProps}
+      />
+    );
+
+    const commonProps = {
+      width,
+      value,
+      height,
+      margin: isEnlarged ? theme.rangePlotMarginLarge : theme.rangePlotMargin,
+      brushComponent,
+      brushing,
+      isEnlarged,
+      enableChartHover,
+      onMouseMove,
+      hoveredDP,
+      isRanged,
+      ...chartProps
+    };
+
+    return (
+      <StyledRangePlot
+        style={{
+          height: `${isEnlarged ? theme.rangePlotContainerHLarge : theme.rangePlotContainerH}px`
+        }}
+        className="kg-range-slider__plot"
+      >
+        {plotType === 'lineChart' && lineChart ? (
+          <LineChart lineChart={lineChart} {...commonProps} />
+        ) : (
+          <HistogramPlot histogram={histogram} {...commonProps} />
+        )}
+      </StyledRangePlot>
+    );
+  };
+
+  RangePlot.propTypes = {
     value: PropTypes.arrayOf(PropTypes.number).isRequired,
     histogram: PropTypes.arrayOf(
       PropTypes.shape({
@@ -55,186 +133,5 @@ export default class RangePlot extends Component {
     onBlur: PropTypes.func,
     width: PropTypes.number.isRequired
   };
-
-  state = {
-    hoveredDP: null
-  };
-
-  domainSelector = props => props.lineChart && props.lineChart.xDomain;
-  hintFormatter = createSelector(this.domainSelector, domain =>
-    getTimeWidgetHintFormatter(domain)
-  );
-
-  onMouseMove = hoveredDP => {
-    this.setState({hoveredDP});
-  };
-
-  render() {
-    const {
-      onBrush,
-      range,
-      value,
-      width,
-      plotType,
-      lineChart,
-      histogram
-    } = this.props;
-    const domain = [histogram[0].x0, histogram[histogram.length - 1].x1];
-
-    const brushComponent = (
-      <RangeBrush
-        domain={domain}
-        onBrush={onBrush}
-        range={range}
-        value={value}
-        width={width}
-      />
-    );
-
-    return (
-      <div
-        style={{
-          height: `${containerH}px`,
-          position: 'relative'
-        }}
-      >
-        {plotType === 'lineChart' ? (
-          <LineChart
-            hoveredDP={this.state.hoveredDP}
-            width={width}
-            height={containerH}
-            margin={chartMargin}
-            children={brushComponent}
-            onMouseMove={this.onMouseMove}
-            yDomain={lineChart.yDomain}
-            hintFormat={this.hintFormatter(this.props)}
-            data={lineChart.series}
-          />
-        ) : (
-          <Histogram
-            width={width}
-            height={chartH}
-            value={value}
-            margin={chartMargin}
-            histogram={histogram}
-            brushComponent={brushComponent}
-          />
-        )}
-      </div>
-    );
-  }
+  return withTheme(RangePlot);
 }
-
-const Histogram = ({
-  width,
-  height,
-  margin,
-  histogram,
-  value,
-  brushComponent
-}) => {
-  const domain = [histogram[0].x0, histogram[histogram.length - 1].x1];
-  const barWidth = width / histogram.length;
-
-  const x = scaleLinear()
-    .domain(domain)
-    .range([0, width]);
-
-  const y = scaleLinear()
-    .domain([0, max(histogram, d => d.count)])
-    .range([0, height]);
-
-  return (
-    <svg width={width} height={height} style={{marginTop: `${margin.top}px`}}>
-      <g className="histogram-bars">
-        {histogram.map(bar => {
-          const inRange = bar.x0 >= value[0] && bar.x1 <= value[1];
-          const fill = inRange ? histogramStyle.highlightedColor : histogramStyle.unHighlightedColor;
-          const wRatio = inRange ? histogramStyle.highlightW : histogramStyle.unHighlightedW;
-
-          return (
-            <rect
-              key={bar.x0}
-              fill={fill}
-              height={y(bar.count)}
-              width={barWidth * wRatio}
-              x={x(bar.x0) + barWidth * (1 - wRatio) / 2}
-              rx={1}
-              ry={1}
-              y={height - y(bar.count)}
-            />
-          );
-        })}
-      </g>
-      {brushComponent}
-    </svg>
-  );
-};
-
-const LineChartWrapper = styled.div`
-  .rv-xy-plot__inner path {
-    fill: none;
-    stroke-width: 1.5;
-  }
-`;
-
-const LineChart = ({
-  width,
-  height,
-  yDomain,
-  hintFormat,
-  hoveredDP,
-  margin,
-  color,
-  data,
-  onMouseMove,
-  children
-}) => {
-  const brushData = [
-    {x: data[0].x, y: yDomain[1], customComponent: () => children}
-  ];
-
-  return (
-    <LineChartWrapper>
-      <XYPlot width={width} height={height} margin={{...margin, bottom: 12}}>
-        <LineSeries
-          strokeWidth={2}
-          color={color}
-          data={data}
-          onNearestX={onMouseMove}
-        />
-        <MarkSeries
-          data={hoveredDP ? [hoveredDP] : []}
-          color={color}
-          size={3}
-        />
-        <CustomSVGSeries data={brushData} />
-        {hoveredDP ? (
-          <Hint value={hoveredDP}>
-            <HintContent
-              {...hoveredDP}
-              format={val => moment.utc(val).format(hintFormat)}
-            />
-          </Hint>
-        ) : null}
-      </XYPlot>
-    </LineChartWrapper>
-  );
-};
-
-const StyledHint = styled.div`
-  background-color: #d3d8e0;
-  border-radius: 2px;
-  color: ${props => props.theme.textColorLT};
-  font-size: 9px;
-  margin: 4px;
-  padding: 3px 6px;
-  pointer-events: none;
-  user-select: none;
-`;
-const HintContent = ({x, y, format}) => (
-  <StyledHint>
-    <div className="hint--x">{format(x)}</div>
-    <div className="row">{y}</div>
-  </StyledHint>
-);

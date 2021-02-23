@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -26,8 +26,7 @@ export const IMAGE_EXPORT_ERRORS = {
   dataUri: `[kepler.gl] Failed to create image from data uri.
   Copy the uri in the javascript console when reporting this bug.
   The uri is the string starts with "data:image/png"`,
-  styleSheet:
-    `[kepler.gl] Failed to fetch stylesheet when exporting image.
+  styleSheet: `[kepler.gl] Failed to fetch stylesheet when exporting image.
     This probably will not affect the map. It might affect the legend.
     The stylesheet failed to load is: `
 };

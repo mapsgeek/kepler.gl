@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -26,8 +26,7 @@ import styled from 'styled-components';
 const FadeIn = styled.div`
   opacity: ${props => (props.isVisible ? '1.0' : '0.0')};
   transform: ${props => (props.isVisible ? undefined : 'translateY(10px)')};
-  transition: ${props =>
-    `opacity 350ms ${props.delay}ms, transform 350ms ${props.delay}ms`};
+  transition: ${props => `opacity 350ms ${props.delay}ms, transform 350ms ${props.delay}ms`};
 `;
 
 export default class StaggeredScrollAnimation extends PureComponent {
@@ -35,7 +34,12 @@ export default class StaggeredScrollAnimation extends PureComponent {
     duration: PropTypes.number,
     delay: PropTypes.number,
     animateOnce: PropTypes.bool,
-    Container: PropTypes.oneOfType([PropTypes.object, PropTypes.element, PropTypes.func, PropTypes.string]),
+    Container: PropTypes.oneOfType([
+      PropTypes.object,
+      PropTypes.element,
+      PropTypes.func,
+      PropTypes.string
+    ]),
     scrollOffsetTop: PropTypes.number
   };
 

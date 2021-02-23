@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,7 +22,9 @@
 import React, {Component} from 'react';
 import PropTypes from 'prop-types';
 import styled from 'styled-components';
-import {CORS_LINK, LOADING_URL_MESSAGE} from '../../constants/default-settings';
+import {CORS_LINK} from '../../constants/default-settings';
+import {FormattedHTMLMessage, FormattedMessage} from 'react-intl';
+import {Button} from 'kepler.gl/components';
 
 const propTypes = {
   onLoadRemoteMap: PropTypes.func.isRequired
@@ -44,12 +46,12 @@ const InputForm = styled.div`
 const StyledInput = styled.input`
   width: 100%;
   padding: ${props => props.theme.inputPadding};
-  color: ${props => props.error ? 'red' : props.theme.titleColorLT};
+  color: ${props => (props.error ? 'red' : props.theme.titleColorLT)};
   height: ${props => props.theme.inputBoxHeight};
   border: 0;
   outline: 0;
   font-size: ${props => props.theme.inputFontSize};
-  
+
   :active,
   :focus,
   &.focus,
@@ -73,11 +75,6 @@ export const StyledInputLabel = styled.div`
   }
 `;
 
-export const StyledBtn = styled.button`
-  background-color: ${props => props.theme.primaryBtnActBgd};
-  color: ${props => props.theme.primaryBtnActColor};
-`;
-
 export const StyledError = styled.div`
   color: red;
 `;
@@ -94,22 +91,18 @@ const Error = ({error, url}) => (
 );
 
 class LoadRemoteMap extends Component {
+  state = {
+    dataUrl: ''
+  };
 
-  constructor(props) {
-    super(props);
-
-    this.state = {
-      dataUrl: ''
-    };
-  }
-  onMapUrlChange = (e) => {
+  onMapUrlChange = e => {
     // TODO: validate url
     this.setState({
       dataUrl: e.target.value
     });
   };
 
-  onLoadRemoteMap  = () => {
+  onLoadRemoteMap = () => {
     const {dataUrl} = this.state;
     if (!dataUrl) {
       return;
@@ -122,34 +115,36 @@ class LoadRemoteMap extends Component {
     return (
       <div>
         <InputForm>
-          <StyledDescription>Load your map using your custom URL</StyledDescription>
+          <StyledDescription>
+            <FormattedMessage id={'loadRemoteMap.description'} />
+          </StyledDescription>
           <StyledInputLabel>
-            {LOADING_URL_MESSAGE}
+            <FormattedMessage id={'loadRemoteMap.message'} />
           </StyledInputLabel>
           <StyledInputLabel>
-            Examples:
+            <FormattedMessage id={'loadRemoteMap.examples'} />
             <ul>
               <li>https://your.map.url/map.json</li>
               <li>http://your.map.url/data.csv</li>
             </ul>
           </StyledInputLabel>
           <StyledInputLabel>
-            * CORS policy must be defined on your custom url domain in order to be accessible.
-            For more info <a rel="noopener noreferrer" target="_blank" href={`${CORS_LINK}`}>click here</a>
+            <FormattedMessage id={'loadRemoteMap.cors'} />{' '}
+            <FormattedHTMLMessage id={'loadRemoteMap.clickHere'} values={{corsLink: CORS_LINK}} />
           </StyledInputLabel>
           <StyledFromGroup>
             <StyledInput
               onChange={this.onMapUrlChange}
               type="text"
-              placeholder="File Url"
+              placeholder="Url"
               value={this.state.dataUrl}
               error={this.props.error}
             />
-            <StyledBtn type="submit" onClick={this.onLoadRemoteMap}>
-              Fetch
-            </StyledBtn>
+            <Button type="submit" cta size="small" onClick={this.onLoadRemoteMap}>
+              <FormattedMessage id={'loadRemoteMap.fetch'} />
+            </Button>
           </StyledFromGroup>
-          {this.props.error && (<Error error={this.props.error} url={this.props.option.dataUrl} />)}
+          {this.props.error && <Error error={this.props.error} url={this.props.option.dataUrl} />}
         </InputForm>
       </div>
     );

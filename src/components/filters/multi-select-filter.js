@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -21,16 +21,16 @@
 import React from 'react';
 import ItemSelector from '../common/item-selector/item-selector';
 import {PanelLabel} from '../common/styled-components';
+import {FormattedMessage} from 'localization';
 
-const MultiSelectFilter = ({filter, setFilter}) => (
-  <div>
-    <PanelLabel htmlFor={`filter-${filter.id}`}>Values in</PanelLabel>
-    <ItemSelector
-      options={filter.domain}
-      selectedItems={filter.value}
-      onChange={setFilter}
-    />
-  </div>
-);
-
-export default MultiSelectFilter;
+export default function MultiSelectFilterFactory() {
+  const MultiSelectFilter = ({filter, setFilter}) => (
+    <div>
+      <PanelLabel htmlFor={`filter-${filter.id}`}>
+        <FormattedMessage id={'misc.valuesIn'} />
+      </PanelLabel>
+      <ItemSelector options={filter.domain} selectedItems={filter.value} onChange={setFilter} />
+    </div>
+  );
+  return MultiSelectFilter;
+}

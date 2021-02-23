@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -20,16 +20,24 @@
 
 // Data Processor
 export {
+  formatCsv,
   processGeojson,
   processCsvData,
   processRowObject,
   processKeplerglJSON,
+  processKeplerglDataset,
   analyzerTypeToFieldType,
   getFieldsFromData,
   parseCsvRowsByFieldType
 } from './data-processor';
 
 // File Handlers
-export {getFileHandler, getFileType} from './file-handler';
+export {
+  readFileInBatches,
+  processFileData,
+  filesToDataPayload,
+  isKeplerGlMap,
+  readBatch
+} from './file-handler';
 
 export {Processors as default} from './data-processor';

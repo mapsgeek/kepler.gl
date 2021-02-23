@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -21,20 +21,21 @@
 import React, {Component} from 'react';
 import PropTypes from 'prop-types';
 
-import {Button} from 'components/common/styled-components';
+import {Button, SidePanelSection} from 'components/common/styled-components';
 import MapStyleSelectorFactory from 'components/side-panel/map-style-panel/map-style-selector';
 import LayerGroupSelectorFactory from 'components/side-panel/map-style-panel/map-layer-selector';
 
 import {Add} from 'components/common/icons';
-import { DEFAULT_LAYER_GROUPS } from 'constants/default-settings';
+import {DEFAULT_LAYER_GROUPS} from 'constants/default-settings';
+import ColorSelector from './layer-panel/color-selector';
+import {createSelector} from 'reselect';
+import {injectIntl} from 'react-intl';
+import {FormattedMessage} from 'localization';
 
-MapManagerFactory.deps = [
-  MapStyleSelectorFactory,
-  LayerGroupSelectorFactory
-];
+MapManagerFactory.deps = [MapStyleSelectorFactory, LayerGroupSelectorFactory];
 
 function MapManagerFactory(MapStyleSelector, LayerGroupSelector) {
-  return class MapManager extends Component {
+  class MapManager extends Component {
     static propTypes = {
       mapStyle: PropTypes.object.isRequired,
       onConfigChange: PropTypes.func.isRequired,
@@ -46,10 +47,8 @@ function MapManagerFactory(MapStyleSelector, LayerGroupSelector) {
       isSelecting: false
     };
 
-    _updateConfig = newProp => {
-      const newConfig = {...this.props.mapStyle, ...newProp};
-      this.props.onConfigChange(newConfig);
-    };
+    buildingColorSelector = props => props.mapStyle.threeDBuildingColor;
+    setColorSelector = props => props.set3dBuildingColor;
 
     _toggleSelecting = () => {
       this.setState({isSelecting: !this.state.isSelecting});
@@ -61,10 +60,23 @@ function MapManagerFactory(MapStyleSelector, LayerGroupSelector) {
     };
 
     render() {
-      const {mapStyle} = this.props;
-      const editableLayers = DEFAULT_LAYER_GROUPS.map(lg =>
-        lg.slug
-     );
+      const {mapStyle, intl} = this.props;
+      const editableLayers = DEFAULT_LAYER_GROUPS.map(lg => lg.slug);
+      const hasBuildingLayer = mapStyle.visibleLayerGroups['3d building'];
+      const colorSetSelector = createSelector(
+        this.buildingColorSelector,
+        this.setColorSelector,
+        (selectedColor, setColor) => [
+          {
+            selectedColor,
+            setColor,
+            isRange: false,
+            label: intl.formatMessage({id: 'mapManager.3dBuildingColor'})
+          }
+        ]
+      );
+
+      const colorSets = colorSetSelector(this.props);
 
       return (
         <div className="map-style-panel">
@@ -80,19 +92,26 @@ function MapManagerFactory(MapStyleSelector, LayerGroupSelector) {
                 layers={mapStyle.visibleLayerGroups}
                 editableLayers={editableLayers}
                 topLayers={mapStyle.topLayerGroups}
-                onChange={this._updateConfig}
+                onChange={this.props.onConfigChange}
               />
             ) : null}
+            <SidePanelSection>
+              <ColorSelector colorSets={colorSets} disabled={!hasBuildingLayer} />
+            </SidePanelSection>
             <Button
+              className="add-map-style-button"
               onClick={this.props.showAddMapStyleModal}
-              secondary>
-              <Add height="12px" />Add Map Style
+              secondary
+            >
+              <Add height="12px" />
+              <FormattedMessage id={'mapManager.addMapStyle'} />
             </Button>
           </div>
         </div>
       );
     }
   }
+  return injectIntl(MapManager);
 }
 
 export default MapManagerFactory;

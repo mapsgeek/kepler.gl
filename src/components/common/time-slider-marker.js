@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -18,21 +18,26 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-import React, {Component} from 'react';
+import React, {useRef, useEffect, useMemo} from 'react';
 import PropTypes from 'prop-types';
 import {scaleUtc} from 'd3-scale';
 import {select} from 'd3-selection';
 import {axisBottom} from 'd3-axis';
-import {createSelector} from 'reselect';
 import styled from 'styled-components';
+
+const MIN_TICK_WIDTH_LARGE = 80;
+const MIN_TICK_WIDTH_SMALL = 50;
+const HEIGHT = 30;
 
 const TimeSliderContainer = styled.svg`
   pointer-events: none;
   position: absolute;
   top: 0;
+  overflow: visible;
+
   .axis text {
-    font-size: 9px;
-    fill: ${props => props.theme.textColor};
+    font-size: ${props => props.theme.axisFontSize};
+    fill: ${props => props.theme.axisFontColor};
   }
 
   .axis line,
@@ -48,8 +53,8 @@ const TimeSliderContainer = styled.svg`
   }
 
   .value {
-    fill: ${props => props.theme.textColor};
-    font-size: 10px;
+    fill: ${props => props.theme.axisFontColor};
+    font-size: ${props => props.theme.axisFontSize};
 
     &.start {
       text-anchor: start;
@@ -61,66 +66,51 @@ const TimeSliderContainer = styled.svg`
   }
 `;
 
-const height = 30;
+function TimeSliderMarkerFactory() {
+  function updateAxis(scale, width, xAxisRef, isEnlarged) {
+    if (!scale) {
+      return;
+    }
 
-export default class TimeSliderMarker extends Component {
-  static propTypes = {
+    // TODO: pass in ticks if interval is defined
+    const ticks = Math.floor(width / (isEnlarged ? MIN_TICK_WIDTH_LARGE : MIN_TICK_WIDTH_SMALL));
+
+    const xAxis = axisBottom(scale)
+      .ticks(ticks)
+      .tickSize(0)
+      .tickPadding(12);
+
+    select(xAxisRef.current).call(xAxis);
+  }
+
+  const TimeSliderMarker = ({width, domain, isEnlarged = true, height = HEIGHT}) => {
+    const xAxisRef = useRef(null);
+    const scale = useMemo(
+      () =>
+        Array.isArray(domain)
+          ? scaleUtc()
+              .domain(domain)
+              .range([0, width])
+          : null,
+      [domain, width]
+    );
+
+    useEffect(() => {
+      updateAxis(scale, width, xAxisRef, isEnlarged);
+    }, [scale, width, xAxisRef, isEnlarged]);
+    return (
+      <TimeSliderContainer className="time-slider-marker" width={width} height={height}>
+        <g className="x axis" ref={xAxisRef} transform="translate(0, 0)" />
+      </TimeSliderContainer>
+    );
+  };
+
+  TimeSliderMarker.propTypes = {
     domain: PropTypes.arrayOf(PropTypes.any).isRequired,
     width: PropTypes.number.isRequired
   };
 
-  componentDidMount() {
-    this._updateAxis(this.scaleSelector(this.props));
-  }
+  return TimeSliderMarker;
+}
 
-  componentWillReceiveProps(nextProps) {
-    if (this.scaleSelector(this.props) !== this.scaleSelector(nextProps)) {
-      this._updateAxis(this.scaleSelector(nextProps));
-    }
-  }
-
-  domainSelector = props => props.domain;
-  widthSelector = props => props.width;
-  scaleSelector = createSelector(
-    this.domainSelector,
-    this.widthSelector,
-    (domain, width) =>
-      Array.isArray(domain)
-        ? scaleUtc()
-            .domain(domain)
-            .range([0, width])
-        : null
-  );
-
-  _updateAxis(scale) {
-    if (!scale) {
-      return;
-    }
-    const xAxis = axisBottom(scale)
-      .ticks(4)
-      .tickSize(8)
-      .tickPadding(6);
-
-    const svg = select(this.svgContainer);
-
-    svg
-      .select('.x.axis')
-      .call(xAxis)
-      .selectAll('text');
-  }
-
-  render() {
-    return (
-      <TimeSliderContainer
-        className="time-slider-marker"
-        width={this.props.width}
-        height={height}
-        ref={comp => {
-          this.svgContainer = comp;
-        }}
-      >
-        <g className="x axis" transform="translate(0, 0)" />
-      </TimeSliderContainer>
-    );
-  }
-};
+export default TimeSliderMarkerFactory;

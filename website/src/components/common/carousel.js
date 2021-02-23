@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -41,8 +41,7 @@ const Item = styled.div`
   position: absolute;
   transition: transform 1s;
   cursor: pointer;
-  transform: perspective(600px)
-    translate3d(${props => props.tX}%, 0, ${props => props.tZ}px);
+  transform: perspective(600px) translate3d(${props => props.tX}%, 0, ${props => props.tZ}px);
 `;
 
 export default class Carousel extends PureComponent {

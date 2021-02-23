@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -25,15 +25,12 @@ import {Delete, Info, Warning, Checkmark} from 'components/common/icons';
 import ReactMarkdown from 'react-markdown';
 
 const NotificationItemContent = styled.div`
-  background-color: ${props =>
-    props.theme.notificationColors[props.type] || '#000'};
+  background-color: ${props => props.theme.notificationColors[props.type] || '#000'};
   color: #fff;
   display: flex;
   flex-direction: row;
-  width: ${props =>
-    props.theme.notificationPanelItemWidth * (1 + Number(props.isExpanded))}px;
-  height: ${props =>
-    props.theme.notificationPanelItemHeight * (1 + Number(props.isExpanded))}px;
+  width: ${props => props.theme.notificationPanelItemWidth * (1 + Number(props.isExpanded))}px;
+  height: ${props => props.theme.notificationPanelItemHeight * (1 + Number(props.isExpanded))}px;
   font-size: 11px;
   margin-bottom: 1rem;
   padding: 1em;
@@ -46,7 +43,9 @@ const DeleteIcon = styled(Delete)`
   cursor: pointer;
 `;
 
-const NotificationMessage = styled.div`
+const NotificationMessage = styled.div.attrs({
+  className: 'notification-item--message'
+})`
   flex-grow: 2;
   width: ${props => props.theme.notificationPanelItemWidth}px;
   margin: 0 1em;
@@ -90,14 +89,18 @@ export default function NotificationItemFactory() {
         id: PropTypes.string.isRequired,
         type: PropTypes.string.isRequired,
         message: PropTypes.string.isRequired
-      }).isRequired
+      }).isRequired,
+      isExpanded: PropTypes.bool
     };
 
-    constructor(props) {
-      super(props);
-      this.state = {
-        isExpanded: false
-      };
+    state = {
+      isExpanded: false
+    };
+
+    componentDidMount() {
+      if (this.props.isExpanded) {
+        this.setState({isExpanded: true});
+      }
     }
 
     render() {
@@ -114,22 +117,14 @@ export default function NotificationItemFactory() {
           <NotificationIcon className="notification-item--icon">
             {icons[notification.type]}
           </NotificationIcon>
-          <NotificationMessage
-            className="notification-item--message"
-            isExpanded={isExpanded}
-            theme={this.props.theme}
-          >
-            <ReactMarkdown
-              source={notification.message}
-              renderers={{link: LinkRenderer}}
-            />
+          <NotificationMessage isExpanded={isExpanded} theme={this.props.theme}>
+            <ReactMarkdown source={notification.message} renderers={{link: LinkRenderer}} />
           </NotificationMessage>
-          <div className="notification-item--action">
-            <DeleteIcon
-              height="10px"
-              onClick={() => removeNotification(notification.id)}
-            />
-          </div>
+          {typeof removeNotification === 'function' ? (
+            <div className="notification-item--action">
+              <DeleteIcon height="10px" onClick={() => removeNotification(notification.id)} />
+            </div>
+          ) : null}
         </NotificationItemContent>
       );
     }

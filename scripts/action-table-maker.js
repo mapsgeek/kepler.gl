@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -46,7 +46,6 @@ export function buildActionTable() {
     actionTypeMap = traverseTree(file, actionTypeMap);
   });
 
-  // console.log(actionMap);
   return Object.keys(actionTypeMap).reduce((accu, type) => {
     accu[actionTypeMap[type].action.name] = {
       ...actionTypeMap[type].action,
@@ -119,7 +118,6 @@ function addActionDeclaration(path, actionMap, filePath) {
 
   const returnValue = returnStatement.argument.properties[0].value;
   const actionType = returnValue.property ? returnValue.property.name : returnValue.name;
-  // console.log(actionType)
   const {loc} = path.node;
 
   actionMap[actionType] = actionMap[actionType] || createActionNode(actionType);

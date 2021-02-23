@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -18,10 +18,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-import memoize from 'lodash.memoize';
-
 import Layer from '../base-layer';
-import ArcBrushingLayer from 'deckgl-layers/arc-brushing-layer/arc-brushing-layer';
+import {BrushingExtension} from '@deck.gl/extensions';
+import {ArcLayer as DeckArcLayer} from '@deck.gl/layers';
+
 import {hexToRgb} from 'utils/color-utils';
 import ArcLayerIcon from './arc-layer-icon';
 import {DEFAULT_LAYER_COLOR} from 'constants/default-settings';
@@ -35,12 +35,15 @@ export const arcPosAccessor = ({lat0, lng0, lat1, lng1}) => d => [
   0
 ];
 
-export const arcPosResolver = ({lat0, lng0, lat1, lng1}) =>
-  `${lat0.fieldIdx}-${lng0.fieldIdx}-${lat1.fieldIdx}-${lat1.fieldIdx}}`;
-
 export const arcRequiredColumns = ['lat0', 'lng0', 'lat1', 'lng1'];
+export const arcColumnLabels = {
+  lat0: 'arc.lat0',
+  lng0: 'arc.lng0',
+  lat1: 'arc.lat1',
+  lng1: 'arc.lng1'
+};
 
-export const arctVisConfigs = {
+export const arcVisConfigs = {
   opacity: 'opacity',
   thickness: 'thickness',
   colorRange: 'colorRange',
@@ -51,8 +54,9 @@ export const arctVisConfigs = {
 export default class ArcLayer extends Layer {
   constructor(props) {
     super(props);
-    this.registerVisConfig(arctVisConfigs);
-    this.getPosition = memoize(arcPosAccessor, arcPosResolver);
+
+    this.registerVisConfig(arcVisConfigs);
+    this.getPositionAccessor = () => arcPosAccessor(this.config.columns);
   }
 
   get type() {
@@ -71,15 +75,32 @@ export default class ArcLayer extends Layer {
     return arcRequiredColumns;
   }
 
+  get columnLabels() {
+    return arcColumnLabels;
+  }
   get columnPairs() {
     return this.defaultLinkColumnPairs;
   }
 
   get visualChannels() {
     return {
-      ...super.visualChannels,
+      sourceColor: {
+        ...super.visualChannels.color,
+        property: 'color',
+        key: 'sourceColor',
+        accessor: 'getSourceColor',
+        defaultValue: config => config.color
+      },
+      targetColor: {
+        ...super.visualChannels.color,
+        property: 'targetColor',
+        key: 'targetColor',
+        accessor: 'getTargetColor',
+        defaultValue: config => config.visConfig.targetColor || config.color
+      },
       size: {
         ...super.visualChannels.size,
+        accessor: 'getWidth',
         property: 'stroke'
       }
     };
@@ -87,8 +108,9 @@ export default class ArcLayer extends Layer {
 
   static findDefaultLayerProps({fieldPairs = []}) {
     if (fieldPairs.length < 2) {
-      return [];
+      return {props: []};
     }
+
     const props = {
       color: hexToRgb(DEFAULT_LAYER_COLOR.tripArc)
     };
@@ -100,103 +122,52 @@ export default class ArcLayer extends Layer {
       lat1: fieldPairs[1].pair.lat,
       lng1: fieldPairs[1].pair.lng
     };
-    props.label = `${fieldPairs[0].defaultName} -> ${
-      fieldPairs[1].defaultName
-    } arc`;
+    props.label = `${fieldPairs[0].defaultName} -> ${fieldPairs[1].defaultName} arc`;
 
-    return props;
+    return {props: [props]};
   }
 
-  // TODO: fix complexity
-  /* eslint-disable complexity */
-  formatLayerData(_, allData, filteredIndex, oldLayerData, opt = {}) {
-    const {
-      colorScale,
-      colorDomain,
-      colorField,
-      color,
-      columns,
-      sizeField,
-      sizeScale,
-      sizeDomain,
-      visConfig: {sizeRange, colorRange, targetColor}
-    } = this.config;
+  calculateDataAttribute({allData, filteredIndex}, getPosition) {
+    const data = [];
+    for (let i = 0; i < filteredIndex.length; i++) {
+      const index = filteredIndex[i];
+      const pos = getPosition({data: allData[index]});
 
-    // arc color
-    const cScale =
-      colorField &&
-      this.getVisChannelScale(
-        colorScale,
-        colorDomain,
-        colorRange.colors.map(hexToRgb)
-      );
-
-    // arc thickness
-    const sScale =
-      sizeField && this.getVisChannelScale(sizeScale, sizeDomain, sizeRange);
-
-    const getPosition = this.getPosition(columns);
-
-    if (!oldLayerData || oldLayerData.getPosition !== getPosition) {
-      this.updateLayerMeta(allData, getPosition);
-    }
-
-    let data;
-    if (
-      oldLayerData &&
-      oldLayerData.data &&
-      opt.sameData &&
-      oldLayerData.getPosition === getPosition
-    ) {
-      data = oldLayerData.data;
-    } else {
-      data = filteredIndex.reduce((accu, index) => {
-        const pos = getPosition({data: allData[index]});
-
-        // if doesn't have point lat or lng, do not add the arc
-        // deck.gl can't handle position == null
-        if (!pos.every(Number.isFinite)) {
-          return accu;
-        }
-
-        accu.push({
+      // if doesn't have point lat or lng, do not add the point
+      // deck.gl can't handle position = null
+      if (pos.every(Number.isFinite)) {
+        data.push({
           index,
           sourcePosition: [pos[0], pos[1], pos[2]],
           targetPosition: [pos[3], pos[4], pos[5]],
           data: allData[index]
         });
-
-        return accu;
-      }, []);
+      }
     }
 
-    const getStrokeWidth = sScale ? d =>
-       this.getEncodedChannelValue(sScale, d.data, sizeField, 0) : 1;
+    return data;
+  }
 
-    const getColor = cScale ? d =>
-       this.getEncodedChannelValue(cScale, d.data, colorField) : color;
-
-    const getTargetColor = cScale ? d =>
-       this.getEncodedChannelValue(cScale, d.data, colorField)
-        : targetColor || color;
-
+  formatLayerData(datasets, oldLayerData) {
+    const {gpuFilter} = datasets[this.config.dataId];
+    const {data} = this.updateData(datasets, oldLayerData);
+    const accessors = this.getAttributeAccessors();
     return {
       data,
-      getColor,
-      getSourceColor: getColor,
-      getTargetColor,
-      getStrokeWidth
+      getFilterValue: gpuFilter.filterValueAccessor(),
+      ...accessors
     };
   }
   /* eslint-enable complexity */
 
-  updateLayerMeta(allData, getPosition) {
+  updateLayerMeta(allData) {
     // get bounds from arcs
+    const getPosition = this.getPositionAccessor();
+
     const sBounds = this.getPointsBounds(allData, d => {
       const pos = getPosition({data: d});
       return [pos[0], pos[1]];
     });
-
     const tBounds = this.getPointsBounds(allData, d => {
       const pos = getPosition({data: d});
       return [pos[3], pos[4]];
@@ -215,74 +186,37 @@ export default class ArcLayer extends Layer {
     this.updateMeta({bounds});
   }
 
-  renderLayer({
-    data,
-    idx,
-    objectHovered,
-    layerInteraction,
-    mapState,
-    interactionConfig
-  }) {
-    const {brush} = interactionConfig;
-
-    const colorUpdateTriggers = {
-      color: this.config.color,
-      colorField: this.config.colorField,
-      colorRange: this.config.visConfig.colorRange,
-      colorScale: this.config.colorScale,
-      targetColor: this.config.visConfig.targetColor
+  renderLayer(opts) {
+    const {data, gpuFilter, objectHovered, interactionConfig} = opts;
+    const updateTriggers = {
+      getPosition: this.config.columns,
+      getFilterValue: gpuFilter.filterValueUpdateTriggers,
+      ...this.getVisualChannelUpdateTriggers()
     };
-
-    const interaction = {
-      // auto highlighting
-      pickable: true,
-      autoHighlight: !brush.enabled,
-      highlightColor: this.config.highlightColor,
-
-      // brushing
-      brushRadius: brush.config.size * 1000,
-      brushSource: true,
-      brushTarget: true,
-      enableBrushing: brush.enabled
-    };
-
+    const defaultLayerProps = this.getDefaultDeckLayerProps(opts);
+    const hoveredObject = this.hasHoveredObject(objectHovered);
     return [
-      new ArcBrushingLayer({
+      new DeckArcLayer({
+        ...defaultLayerProps,
+        ...this.getBrushingExtensionProps(interactionConfig, 'source_target'),
         ...data,
-        ...interaction,
-        ...layerInteraction,
-        id: this.id,
-        idx,
-        opacity: this.config.visConfig.opacity,
-        pickedColor: this.config.highlightColor,
-        strokeScale: this.config.visConfig.thickness,
-
-        // parameters
-        parameters: {depthTest: mapState.dragRotate},
-
-        updateTriggers: {
-          getStrokeWidth: {
-            sizeField: this.config.sizeField,
-            sizeRange: this.config.visConfig.sizeRange
-          },
-          getSourceColor: colorUpdateTriggers,
-          getTargetColor: colorUpdateTriggers
-        }
+        widthScale: this.config.visConfig.thickness,
+        updateTriggers,
+        extensions: [...defaultLayerProps.extensions, new BrushingExtension()]
       }),
       // hover layer
-      ...(this.isLayerHovered(objectHovered)
-      ? [
-          new ArcBrushingLayer({
-            id: `${this.id}-hovered`,
-            data: [objectHovered.object],
-            strokeScale: this.config.visConfig.thickness,
-            getSourceColor: this.config.highlightColor,
-            getTargetColor: this.config.highlightColor,
-            getStrokeWidth: data.getStrokeWidth,
-            pickable: false
-          })
-        ]
-      : [])
+      ...(hoveredObject
+        ? [
+            new DeckArcLayer({
+              ...this.getDefaultHoverLayerProps(),
+              data: [hoveredObject],
+              widthScale: this.config.visConfig.thickness,
+              getSourceColor: this.config.highlightColor,
+              getTargetColor: this.config.highlightColor,
+              getWidth: data.getWidth
+            })
+          ]
+        : [])
     ];
   }
 }

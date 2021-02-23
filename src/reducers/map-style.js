@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -37,10 +37,17 @@ const actionHandler = {
   [ActionTypes.RECEIVE_MAP_CONFIG]: mapStyleUpdaters.receiveMapConfigUpdater,
   [ActionTypes.LOAD_CUSTOM_MAP_STYLE]: mapStyleUpdaters.loadCustomMapStyleUpdater,
   [ActionTypes.ADD_CUSTOM_MAP_STYLE]: mapStyleUpdaters.addCustomMapStyleUpdater,
+  [ActionTypes.RESET_MAP_CONFIG]: mapStyleUpdaters.resetMapConfigMapStyleUpdater,
+  [ActionTypes.SET_3D_BUILDING_COLOR]: mapStyleUpdaters.set3dBuildingColorUpdater,
   [ActionTypes.RESET_MAP_CONFIG]: mapStyleUpdaters.resetMapConfigMapStyleUpdater
 };
 
 export const mapStyleReducerFactory = (initialState = {}) =>
-  handleActions(actionHandler, {...mapStyleUpdaters.INITIAL_MAP_STYLE, ...initialState, initialState});
+  // @ts-ignore
+  handleActions(actionHandler, {
+    ...mapStyleUpdaters.INITIAL_MAP_STYLE,
+    ...initialState,
+    initialState
+  });
 
 export default mapStyleReducerFactory();

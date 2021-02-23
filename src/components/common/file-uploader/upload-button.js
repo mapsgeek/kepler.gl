@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -18,9 +18,14 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-import React, {Component} from 'react';
-import PropTypes from 'prop-types';
+import React, {Component, createRef} from 'react';
 import styled from 'styled-components';
+
+/**
+@typedef {{
+  onUpload: (files: FileList, event: any) => void;
+}} UploadButtonProps
+*/
 
 const Wrapper = styled.div`
   display: inline-block;
@@ -36,35 +41,43 @@ const Wrapper = styled.div`
 /*
 Inspired by https://github.com/okonet/react-dropzone/blob/master/src/index.js
 */
-export default class UploadButton extends Component {
-  static propTypes = {
-    onUpload: PropTypes.func.isRequired
-  };
+/** @augments React.Component<UploadButtonProps> */
+export class UploadButton extends Component {
+  _fileInput = createRef();
 
   _onClick = () => {
-    this._fileInput.value = null;
-    this._fileInput.click();
+    this._fileInput.current.value = null;
+    this._fileInput.current.click();
   };
 
-  _onChange = ({target: {files}}) => {
+  _onChange = event => {
+    const {
+      target: {files}
+    } = event;
+
     if (!files) {
       return;
     }
 
-    this.props.onUpload(files);
+    this.props.onUpload(files, event);
   };
 
   render() {
     return (
-      <Wrapper>
+      <Wrapper className="upload-button">
         <input
           type="file"
-          ref={ref => {this._fileInput = ref}}
+          ref={this._fileInput}
           style={{display: 'none'}}
           onChange={this._onChange}
+          className="upload-button-input"
         />
-        <span onClick={this._onClick}>{this.props.children}</span>
+        <span className="file-upload__upload-button-span" onClick={this._onClick}>
+          {this.props.children}
+        </span>
       </Wrapper>
     );
   }
-};
+}
+
+export default UploadButton;

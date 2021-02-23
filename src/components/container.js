@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,27 +22,18 @@ import React, {Component} from 'react';
 import {connect} from 'react-redux';
 import memoize from 'lodash.memoize';
 import {console as Console} from 'global/window';
-import {injector} from './injector';
+import {injector, provideRecipesToInjector, flattenDeps} from './injector';
 import KeplerGlFactory from './kepler-gl';
 import {forwardTo} from 'actions/action-wrapper';
 
-import {
-  registerEntry,
-  deleteEntry,
-  renameEntry
-} from 'actions/identity-actions';
+import {registerEntry, deleteEntry, renameEntry} from 'actions/identity-actions';
+import {notNullorUndefined} from 'utils/data-utils';
 
-export const errorMsg = {
+export const ERROR_MSG = {
   noState:
-    `kepler.gl state doesnt exist. ` +
+    `kepler.gl state does not exist. ` +
     `You might forget to mount keplerGlReducer in your root reducer.` +
-    `If it is not mounted as state.keplerGl by default, you need to provide getState as a prop`,
-
-  wrongType: type => `injectComponents takes an array of factories replacement pairs as input, ` +
-    `${type} is provided`,
-
-  wrongPairType: `injectComponents takes an array of factories replacement pairs as input, ` +
-  `each pair be a array as [originalFactory, replacement]`
+    `If it is not mounted as state.keplerGl by default, you need to provide getState as a prop`
 };
 
 ContainerFactory.deps = [KeplerGlFactory];
@@ -64,6 +55,9 @@ export function ContainerFactory(KeplerGl) {
     * In case you create multiple kepler.gl instances using the same id, the kepler.gl state defined by the entry will be
     * overridden by the latest instance and reset to a blank state.
     * @param {string} props.mapboxApiAccessToken - _required_
+    * @param {string} props.mapboxApiUrl - _optional_
+    * @param {Boolean} props.mapStylesReplaceDefault - _optional_
+    * @param {object} props.initialUiState - _optional_
 
     * You can create a free account at [www.mapbox.com](www.mapbox.com) and create a token at
     * [www.mapbox.com/account/access-tokens](www.mapbox.com/account/access-tokens)
@@ -86,7 +80,7 @@ export function ContainerFactory(KeplerGl) {
       this.getSelector = memoize((id, getState) => state => {
         if (!getState(state)) {
           // log error
-          Console.error(errorMsg.noState);
+          Console.error(ERROR_MSG.noState);
 
           return null;
         }
@@ -95,16 +89,37 @@ export function ContainerFactory(KeplerGl) {
       this.getDispatch = memoize((id, dispatch) => forwardTo(id, dispatch));
     }
 
-    componentWillMount() {
-      const {id, mint, mapboxApiAccessToken} = this.props;
+    componentDidMount() {
+      const {
+        id,
+        mint,
+        mapboxApiAccessToken,
+        mapboxApiUrl,
+        mapStylesReplaceDefault,
+        initialUiState
+      } = this.props;
+
       // add a new entry to reducer
-      this.props.dispatch(registerEntry({id, mint, mapboxApiAccessToken}));
+      this.props.dispatch(
+        registerEntry({
+          id,
+          mint,
+          mapboxApiAccessToken,
+          mapboxApiUrl,
+          mapStylesReplaceDefault,
+          initialUiState
+        })
+      );
     }
 
-    componentWillReceiveProps(nextProps) {
+    componentDidUpdate(prevProps) {
       // check if id has changed, if true, copy state over
-      if (nextProps.id && nextProps.id !== this.props.id) {
-        this.props.dispatch(renameEntry(this.props.id, nextProps.id));
+      if (
+        notNullorUndefined(prevProps.id) &&
+        notNullorUndefined(this.props.id) &&
+        prevProps.id !== this.props.id
+      ) {
+        this.props.dispatch(renameEntry(prevProps.id, this.props.id));
       }
     }
 
@@ -140,43 +155,17 @@ export function ContainerFactory(KeplerGl) {
   return connect(mapStateToProps, dispatchToProps)(Container);
 }
 
-// entryPoint
-function flattenDeps(allDeps, factory) {
-  const addToDeps = allDeps.concat([factory]);
-  return Array.isArray(factory.deps) && factory.deps.length ?
-    factory.deps.reduce((accu, dep) => flattenDeps(accu, dep), addToDeps) :
-    addToDeps;
-}
-
 const allDependencies = flattenDeps([], ContainerFactory);
 
 // provide all dependencies to appInjector
-export const appInjector = allDependencies
-  .reduce((inj, factory) => inj.provide(factory, factory), injector());
+export const appInjector = allDependencies.reduce(
+  (inj, factory) => inj.provide(factory, factory),
+  injector()
+);
 
 // Helper to inject custom components and return kepler.gl container
-export function injectComponents(recipes) {
-  if (!Array.isArray(recipes)) {
-    Console.error(errorMsg.wrongType(typeof(recipes)));
-    return appInjector.get(ContainerFactory);
-  }
-
-  return recipes
-    .reduce((inj, recipe) => {
-      if (!Array.isArray(recipes)) {
-        Console.error(errorMsg.wrongPairType);
-        return inj;
-      }
-
-      // collect dependencies of custom factories, if there is any.
-      // Add them to the injector
-      const customDependencies = flattenDeps([], recipe[1]);
-      inj = customDependencies
-        .reduce((ij, factory) => ij.provide(factory, factory), inj);
-
-      return inj.provide(...recipe);
-    }, appInjector)
-    .get(ContainerFactory);
+export function injectComponents(recipes = []) {
+  return provideRecipesToInjector(recipes, appInjector).get(ContainerFactory);
 }
 
 const InjectedContainer = appInjector.get(ContainerFactory);

@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -18,32 +18,31 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-import memoize from 'lodash.memoize';
 import uniq from 'lodash.uniq';
+import {DATA_TYPES} from 'type-analyzer';
 
 import Layer, {colorMaker} from '../base-layer';
-import {GeoJsonLayer as DeckGLGeoJsonLayer} from 'deck.gl';
-
-import {hexToRgb} from 'utils/color-utils';
-import {
-  getGeojsonDataMaps,
-  getGeojsonBounds,
-  featureToDeckGlGeoType
-} from './geojson-utils';
+import {GeoJsonLayer as DeckGLGeoJsonLayer} from '@deck.gl/layers';
+import {getGeojsonDataMaps, getGeojsonBounds, getGeojsonFeatureTypes} from './geojson-utils';
 import GeojsonLayerIcon from './geojson-layer-icon';
 import {GEOJSON_FIELDS, HIGHLIGH_COLOR_3D, CHANNEL_SCALES} from 'constants/default-settings';
+import {LAYER_VIS_CONFIGS} from 'layers/layer-factory';
+
+const SUPPORTED_ANALYZER_TYPES = {
+  [DATA_TYPES.GEOMETRY]: true,
+  [DATA_TYPES.GEOMETRY_FROM_STRING]: true,
+  [DATA_TYPES.PAIR_GEOMETRY_FROM_STRING]: true
+};
 
 export const geojsonVisConfigs = {
   opacity: 'opacity',
+  strokeOpacity: {
+    ...LAYER_VIS_CONFIGS.opacity,
+    property: 'strokeOpacity'
+  },
   thickness: {
-    type: 'number',
-    defaultValue: 0.5,
-    label: 'Stroke Width',
-    isRanged: false,
-    range: [0, 100],
-    step: 0.1,
-    group: 'stroke',
-    property: 'thickness'
+    ...LAYER_VIS_CONFIGS.thickness,
+    defaultValue: 0.5
   },
   strokeColor: 'strokeColor',
   colorRange: 'colorRange',
@@ -62,15 +61,18 @@ export const geojsonVisConfigs = {
 
 export const geoJsonRequiredColumns = ['geojson'];
 export const featureAccessor = ({geojson}) => d => d[geojson.fieldIdx];
-export const featureResolver = ({geojson}) => geojson.fieldIdx;
+// access feature properties from geojson sub layer
+export const defaultElevation = 500;
+export const defaultLineWidth = 1;
+export const defaultRadius = 1;
 
 export default class GeoJsonLayer extends Layer {
   constructor(props) {
     super(props);
 
-    this.dataToFeature = {};
+    this.dataToFeature = [];
     this.registerVisConfig(geojsonVisConfigs);
-    this.getFeature = memoize(featureAccessor, featureResolver);
+    this.getPositionAccessor = () => featureAccessor(this.config.columns);
   }
 
   get type() {
@@ -90,8 +92,17 @@ export default class GeoJsonLayer extends Layer {
   }
 
   get visualChannels() {
+    const visualChannels = super.visualChannels;
     return {
-      ...super.visualChannels,
+      color: {
+        ...visualChannels.color,
+        accessor: 'getFillColor',
+        condition: config => config.visConfig.filled,
+        nullValue: visualChannels.color.nullValue,
+        getAttributeValue: config => d => d.properties.fillColor || config.color,
+        // used this to get updateTriggers
+        defaultValue: config => config.color
+      },
       strokeColor: {
         property: 'strokeColor',
         field: 'strokeColorField',
@@ -99,12 +110,22 @@ export default class GeoJsonLayer extends Layer {
         domain: 'strokeColorDomain',
         range: 'strokeColorRange',
         key: 'strokeColor',
-        channelScaleType: CHANNEL_SCALES.color
+        channelScaleType: CHANNEL_SCALES.color,
+        accessor: 'getLineColor',
+        condition: config => config.visConfig.stroked,
+        nullValue: visualChannels.color.nullValue,
+        getAttributeValue: config => d =>
+          d.properties.lineColor || config.visConfig.strokeColor || config.color,
+        // used this to get updateTriggers
+        defaultValue: config => config.visConfig.strokeColor || config.color
       },
       size: {
-        ...super.visualChannels.size,
+        ...visualChannels.size,
         property: 'stroke',
-        condition: config => config.visConfig.stroked
+        accessor: 'getLineWidth',
+        condition: config => config.visConfig.stroked,
+        nullValue: 0,
+        getAttributeValue: () => d => d.properties.lineWidth || defaultLineWidth
       },
       height: {
         property: 'height',
@@ -113,8 +134,11 @@ export default class GeoJsonLayer extends Layer {
         domain: 'heightDomain',
         range: 'heightRange',
         key: 'height',
-        channelScaleType: 'size',
-        condition: config => config.visConfig.enable3d
+        channelScaleType: CHANNEL_SCALES.size,
+        accessor: 'getElevation',
+        condition: config => config.visConfig.enable3d,
+        nullValue: 0,
+        getAttributeValue: () => d => d.properties.elevation || defaultElevation
       },
       radius: {
         property: 'radius',
@@ -123,7 +147,10 @@ export default class GeoJsonLayer extends Layer {
         domain: 'radiusDomain',
         range: 'radiusRange',
         key: 'radius',
-        channelScaleType: 'radius'
+        channelScaleType: CHANNEL_SCALES.radius,
+        accessor: 'getRadius',
+        nullValue: 0,
+        getAttributeValue: () => d => d.properties.radius || defaultRadius
       }
     };
   }
@@ -132,9 +159,9 @@ export default class GeoJsonLayer extends Layer {
     return this.getFeature(this.config.columns);
   }
 
-  static findDefaultLayerProps({label, fields}) {
+  static findDefaultLayerProps({label, fields = []}) {
     const geojsonColumns = fields
-      .filter(f => f.type === 'geojson')
+      .filter(f => f.type === 'geojson' && SUPPORTED_ANALYZER_TYPES[f.analyzerType])
       .map(f => f.name);
 
     const defaultColumns = {
@@ -143,14 +170,16 @@ export default class GeoJsonLayer extends Layer {
 
     const foundColumns = this.findDefaultColumnField(defaultColumns, fields);
     if (!foundColumns || !foundColumns.length) {
-      return [];
+      return {props: []};
     }
 
-    return foundColumns.map(columns => ({
-      label: typeof label === 'string' && label.replace(/\.[^/.]+$/, '') || this.type,
-      columns,
-      isVisible: true
-    }));
+    return {
+      props: foundColumns.map(columns => ({
+        label: (typeof label === 'string' && label.replace(/\.[^/.]+$/, '')) || this.type,
+        columns,
+        isVisible: true
+      }))
+    };
   }
 
   getDefaultLayerConfig(props = {}) {
@@ -179,185 +208,44 @@ export default class GeoJsonLayer extends Layer {
     return allData[object.properties.index];
   }
 
-  // TODO: fix complexity
-  /* eslint-disable complexity */
-  formatLayerData(_, allData, filteredIndex, oldLayerData, opt = {}) {
-    const {
-      colorScale,
-      colorField,
-      colorDomain,
-      strokeColorField,
-      strokeColorScale,
-      strokeColorDomain,
-      color,
-      sizeScale,
-      sizeDomain,
-      sizeField,
-      heightField,
-      heightDomain,
-      heightScale,
-      radiusField,
-      radiusDomain,
-      radiusScale,
-      visConfig
-    } = this.config;
+  calculateDataAttribute({allData, filteredIndex}, getPosition) {
+    return filteredIndex.map(i => this.dataToFeature[i]).filter(d => d);
+  }
 
-    const {
-      enable3d,
-      stroked,
-      colorRange,
-      heightRange,
-      sizeRange,
-      radiusRange,
-      strokeColorRange,
-      strokeColor
-    } = visConfig;
-
-    const getFeature = this.getPositionAccessor(this.config.column);
-
-    // geojson feature are object, if doesn't exists
-    // create it and save to layer
-    if (!oldLayerData || oldLayerData.getFeature !== getFeature) {
-      this.updateLayerMeta(allData, getFeature);
-    }
-
-    let geojsonData;
-
-    if (
-      oldLayerData &&
-      oldLayerData.data &&
-      opt.sameData &&
-      oldLayerData.getFeature === getFeature
-    ) {
-      // no need to create a new array of data
-      // use updateTriggers to selectively re-calculate attributes
-      geojsonData = oldLayerData.data;
-    } else {
-      // filteredIndex is a reference of index in allData which can map to feature
-      geojsonData = filteredIndex
-        .map(i => this.dataToFeature[i])
-        .filter(d => d);
-    }
-
-    // fill color
-    const cScale =
-      colorField &&
-      this.getVisChannelScale(
-        colorScale,
-        colorDomain,
-        colorRange.colors.map(hexToRgb)
-      );
-
-    // stroke color
-    const scScale =
-      strokeColorField &&
-      this.getVisChannelScale(
-        strokeColorScale,
-        strokeColorDomain,
-        strokeColorRange.colors.map(hexToRgb)
-      );
-    // calculate stroke scale - if stroked = true
-    const sScale =
-      sizeField &&
-      stroked &&
-      this.getVisChannelScale(sizeScale, sizeDomain, sizeRange);
-
-    // calculate elevation scale - if extruded = true
-    const eScale =
-      heightField &&
-      enable3d &&
-      this.getVisChannelScale(heightScale, heightDomain, heightRange);
-
-    // point radius
-    const rScale =
-      radiusField &&
-      this.getVisChannelScale(radiusScale, radiusDomain, radiusRange);
+  formatLayerData(datasets, oldLayerData) {
+    const {allData, gpuFilter} = datasets[this.config.dataId];
+    const {data} = this.updateData(datasets, oldLayerData);
+    const valueAccessor = f => allData[f.properties.index];
+    const indexAccessor = f => f.properties.index;
+    const accessors = this.getAttributeAccessors(valueAccessor);
 
     return {
-      data: geojsonData,
-      getFeature,
-      getFillColor: d =>
-        cScale
-          ? this.getEncodedChannelValue(
-              cScale,
-              allData[d.properties.index],
-              colorField
-            )
-          : d.properties.fillColor || color,
-      getLineColor: d =>
-        scScale
-          ? this.getEncodedChannelValue(
-              scScale,
-              allData[d.properties.index],
-              strokeColorField
-            )
-          : d.properties.lineColor || strokeColor || color,
-      getLineWidth: d =>
-        sScale
-          ? this.getEncodedChannelValue(
-              sScale,
-              allData[d.properties.index],
-              sizeField,
-              0
-            )
-          : d.properties.lineWidth || 1,
-      getElevation: d =>
-        eScale
-          ? this.getEncodedChannelValue(
-              eScale,
-              allData[d.properties.index],
-              heightField,
-              0
-            )
-          : d.properties.elevation || 500,
-      getRadius: d =>
-        rScale
-          ? this.getEncodedChannelValue(
-              rScale,
-              allData[d.properties.index],
-              radiusField,
-              0
-            )
-          : d.properties.radius || 1
+      data,
+      getFilterValue: gpuFilter.filterValueAccessor(indexAccessor, valueAccessor),
+      ...accessors
     };
   }
-  /* eslint-enable complexity */
 
   updateLayerMeta(allData) {
     const getFeature = this.getPositionAccessor();
     this.dataToFeature = getGeojsonDataMaps(allData, getFeature);
 
-    // calculate layer meta
-    const allFeatures = Object.values(this.dataToFeature);
-
     // get bounds from features
-    const bounds = getGeojsonBounds(allFeatures);
-
-    // get lightSettings from points
-    const lightSettings = this.getLightSettingsFromBounds(bounds);
-
+    const bounds = getGeojsonBounds(this.dataToFeature);
     // if any of the feature has properties.radius set to be true
     const fixedRadius = Boolean(
-      allFeatures.find(d => d && d.properties && d.properties.radius)
+      this.dataToFeature.find(d => d && d.properties && d.properties.radius)
     );
 
     // keep a record of what type of geometry the collection has
-    const featureTypes = allFeatures.reduce((accu, f) => {
-      const geoType = featureToDeckGlGeoType(
-        f && f.geometry && f.geometry.type
-      );
+    const featureTypes = getGeojsonFeatureTypes(this.dataToFeature);
 
-      if (geoType) {
-        accu[geoType] = true;
-      }
-      return accu;
-    }, {});
-
-    this.updateMeta({bounds, lightSettings, fixedRadius, featureTypes});
+    this.updateMeta({bounds, fixedRadius, featureTypes});
   }
 
-  setInitialLayerConfig(allData) {
+  setInitialLayerConfig({allData}) {
     this.updateLayerMeta(allData);
+
     const {featureTypes} = this.meta;
     // default settings is stroke: true, filled: false
     if (featureTypes && featureTypes.polygon) {
@@ -375,96 +263,78 @@ export default class GeoJsonLayer extends Layer {
     return this;
   }
 
-  renderLayer({
-    data,
-    idx,
-    objectHovered,
-    mapState,
-    interactionConfig
-  }) {
-    const {lightSettings, fixedRadius} = this.meta;
+  renderLayer(opts) {
+    const {data, gpuFilter, objectHovered, mapState, interactionConfig} = opts;
+
+    const {fixedRadius, featureTypes} = this.meta;
     const radiusScale = this.getRadiusScaleByZoom(mapState, fixedRadius);
     const zoomFactor = this.getZoomFactor(mapState);
+    const eleZoomFactor = this.getElevationZoomFactor(mapState);
+
     const {visConfig} = this.config;
 
     const layerProps = {
-      // multiplier applied just so it being consistent with previously saved maps
       lineWidthScale: visConfig.thickness * zoomFactor * 8,
-      lineWidthMinPixels: 1,
-      elevationScale: visConfig.elevationScale,
+      elevationScale: visConfig.elevationScale * eleZoomFactor,
       pointRadiusScale: radiusScale,
       lineMiterLimit: 4
     };
 
     const updateTriggers = {
-      getElevation: {
-        heightField: this.config.heightField,
-        heightScale: this.config.heightScale,
-        heightRange: visConfig.heightRange
-      },
-      getFillColor: {
-        color: this.config.color,
-        colorField: this.config.colorField,
-        colorRange: visConfig.colorRange,
-        colorScale: this.config.colorScale
-      },
-      getLineColor: {
-        color: visConfig.strokeColor,
-        colorField: this.config.strokeColorField,
-        colorRange: visConfig.strokeColorRange,
-        colorScale: this.config.strokeColorScale
-      },
-      getLineWidth: {
-        sizeField: this.config.sizeField,
-        sizeRange: visConfig.sizeRange
-      },
-      getRadius: {
-        radiusField: this.config.radiusField,
-        radiusRange: visConfig.radiusRange
-      }
+      ...this.getVisualChannelUpdateTriggers(),
+      getFilterValue: gpuFilter.filterValueUpdateTriggers
     };
+
+    const defaultLayerProps = this.getDefaultDeckLayerProps(opts);
+    const opaOverwrite = {
+      opacity: visConfig.strokeOpacity
+    };
+
+    const pickable = interactionConfig.tooltip.enabled;
+    const hoveredObject = this.hasHoveredObject(objectHovered);
 
     return [
       new DeckGLGeoJsonLayer({
+        ...defaultLayerProps,
         ...layerProps,
-        id: this.id,
-        idx,
-        data: data.data,
-        getFillColor: data.getFillColor,
-        getLineColor: data.getLineColor,
-        getLineWidth: data.getLineWidth,
-        getRadius: data.getRadius,
-        getElevation: data.getElevation,
-        // highlight
-        pickable: true,
+        ...data,
+        pickable,
         highlightColor: HIGHLIGH_COLOR_3D,
-        autoHighlight: visConfig.enable3d,
-        // parameters
-        parameters: {depthTest: Boolean(visConfig.enable3d || mapState.dragRotate)},
-        opacity: visConfig.opacity,
+        autoHighlight: visConfig.enable3d && pickable,
         stroked: visConfig.stroked,
         filled: visConfig.filled,
         extruded: visConfig.enable3d,
         wireframe: visConfig.wireframe,
+        wrapLongitude: false,
         lineMiterLimit: 2,
         rounded: true,
-        lightSettings,
-        updateTriggers
+        updateTriggers,
+        _subLayerProps: {
+          ...(featureTypes.polygon ? {'polygons-stroke': opaOverwrite} : {}),
+          ...(featureTypes.line ? {'line-strings': opaOverwrite} : {}),
+          ...(featureTypes.point
+            ? {
+                points: {
+                  lineOpacity: visConfig.strokeOpacity
+                }
+              }
+            : {})
+        }
       }),
-      ...(this.isLayerHovered(objectHovered) && !visConfig.enable3d
+      ...(hoveredObject && !visConfig.enable3d
         ? [
             new DeckGLGeoJsonLayer({
+              ...this.getDefaultHoverLayerProps(),
               ...layerProps,
-              id: `${this.id}-hovered`,
-              data: [objectHovered.object],
+              wrapLongitude: false,
+              data: [hoveredObject],
               getLineWidth: data.getLineWidth,
               getRadius: data.getRadius,
               getElevation: data.getElevation,
               getLineColor: this.config.highlightColor,
               getFillColor: this.config.highlightColor,
-              updateTriggers,
+              // always draw outline
               stroked: true,
-              pickable: false,
               filled: false
             })
           ]

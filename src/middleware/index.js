@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -30,8 +30,5 @@ import {taskMiddleware} from 'react-palm/tasks';
  * @returns {*[]} the original list of middlewares plus the react-palm middleware
  */
 export function enhanceReduxMiddleware(middlewares = []) {
-  return [
-    ...middlewares,
-    taskMiddleware
-  ];
+  return [...middlewares, taskMiddleware];
 }

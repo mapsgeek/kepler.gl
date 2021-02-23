@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -20,23 +20,16 @@
 
 import React from 'react';
 import PropTypes from 'prop-types';
-import {
-  SidePanelSection,
-  PanelLabel
-} from 'components/common/styled-components';
-import {capitalizeFirstLetter} from 'utils/utils';
+import {PanelLabel, SidePanelSection} from 'components/common/styled-components';
 
-import RangeSlider from 'components/common/range-slider';
+import RangeSliderFactory from 'components/common/range-slider';
+import {FormattedMessage} from 'localization';
 
 const propTypes = {
   layer: PropTypes.object.isRequired,
   property: PropTypes.string.isRequired,
   onChange: PropTypes.func.isRequired,
-  label: PropTypes.oneOfType([
-    PropTypes.string,
-    PropTypes.bool,
-    PropTypes.func
-  ]),
+  label: PropTypes.oneOfType([PropTypes.string, PropTypes.bool, PropTypes.func]),
   range: PropTypes.arrayOf(PropTypes.number).isRequired,
   step: PropTypes.number,
   isRanged: PropTypes.bool,
@@ -44,42 +37,46 @@ const propTypes = {
   inputTheme: PropTypes.bool
 };
 
-export const VisConfigSlider = ({
-  layer: {config},
-  property,
-  label,
-  range,
-  step,
-  isRanged,
-  disabled,
-  onChange,
-  inputTheme
-}) => (
-  <SidePanelSection disabled={Boolean(disabled)}>
-    {label ? (
-      <PanelLabel>
-        {typeof label === 'string'
-          ? label
-          : typeof label === 'function'
-            ? label(config)
-            : capitalizeFirstLetter(property)}
-      </PanelLabel>
-    ) : null}
-    <RangeSlider
-      range={range}
-      value0={isRanged ? config.visConfig[property][0] : range[0]}
-      value1={
-        isRanged ? config.visConfig[property][1] : config.visConfig[property]
-      }
-      step={step}
-      isRanged={Boolean(isRanged)}
-      onChange={value => onChange({[property]: isRanged ? value : value[1]})}
-      inputTheme={inputTheme}
-      showInput
-    />
-  </SidePanelSection>
-);
+VisConfigSliderFactory.deps = [RangeSliderFactory];
 
-VisConfigSlider.propTypes = propTypes;
+export default function VisConfigSliderFactory(RangeSlider) {
+  const VisConfigSlider = ({
+    layer: {config},
+    property,
+    label,
+    range,
+    step,
+    isRanged,
+    disabled,
+    onChange,
+    inputTheme
+  }) => (
+    <SidePanelSection disabled={Boolean(disabled)}>
+      {label ? (
+        <PanelLabel>
+          {typeof label === 'string' ? (
+            <FormattedMessage id={label} />
+          ) : typeof label === 'function' ? (
+            <FormattedMessage id={label(config)} />
+          ) : (
+            <FormattedMessage id={`property.${property}`} />
+          )}
+        </PanelLabel>
+      ) : null}
+      <RangeSlider
+        range={range}
+        value0={isRanged ? config.visConfig[property][0] : range[0]}
+        value1={isRanged ? config.visConfig[property][1] : config.visConfig[property]}
+        step={step}
+        isRanged={Boolean(isRanged)}
+        onChange={value => onChange({[property]: isRanged ? value : value[1]})}
+        inputTheme={inputTheme}
+        showInput
+      />
+    </SidePanelSection>
+  );
 
-export default VisConfigSlider;
+  VisConfigSlider.propTypes = propTypes;
+
+  return VisConfigSlider;
+}

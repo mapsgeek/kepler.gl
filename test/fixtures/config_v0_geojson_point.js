@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -50,14 +50,7 @@ export const savedConfigV0 = {
               name: 'ColorBrewer Dark2-6',
               type: 'qualitative',
               category: 'ColorBrewer',
-              colors: [
-                '#1b9e77',
-                '#d95f02',
-                '#7570b3',
-                '#e7298a',
-                '#66a61e',
-                '#e6ab02'
-              ],
+              colors: ['#1b9e77', '#d95f02', '#7570b3', '#e7298a', '#66a61e', '#e6ab02'],
               reversed: false
             },
             opacity: 0.8,
@@ -139,28 +132,14 @@ export const parsedConfigV0 = {
               name: 'ColorBrewer Dark2-6',
               type: 'qualitative',
               category: 'ColorBrewer',
-              colors: [
-                '#1b9e77',
-                '#d95f02',
-                '#7570b3',
-                '#e7298a',
-                '#66a61e',
-                '#e6ab02'
-              ],
+              colors: ['#1b9e77', '#d95f02', '#7570b3', '#e7298a', '#66a61e', '#e6ab02'],
               reversed: false
             },
             strokeColorRange: {
               name: 'ColorBrewer Dark2-6',
               type: 'qualitative',
               category: 'ColorBrewer',
-              colors: [
-                '#1b9e77',
-                '#d95f02',
-                '#7570b3',
-                '#e7298a',
-                '#66a61e',
-                '#e6ab02'
-              ],
+              colors: ['#1b9e77', '#d95f02', '#7570b3', '#e7298a', '#66a61e', '#e6ab02'],
               reversed: false
             },
             strokeColor: [174, 14, 127],
@@ -184,7 +163,24 @@ export const parsedConfigV0 = {
       tooltip: {
         enabled: true,
         fieldsToShow: {
-          '9sayb4m9r': ['fillColor', 'hi-precision', 'addresses', 'id']
+          '9sayb4m9r': [
+            {
+              name: 'fillColor',
+              format: null
+            },
+            {
+              name: 'hi-precision',
+              format: null
+            },
+            {
+              name: 'addresses',
+              format: null
+            },
+            {
+              name: 'id',
+              format: null
+            }
+          ]
         }
       },
       brush: {

@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,17 +19,18 @@
 // THE SOFTWARE.
 
 import React from 'react';
-import styled from "styled-components";
+import styled from 'styled-components';
 import classnames from 'classnames';
 import {ArrowDown} from 'components/common/icons';
-import PanelHeaderAction from 'components/side-panel/panel-header-action';
+import PanelHeaderActionFactory from 'components/side-panel/panel-header-action';
 
 import {
-  PanelLabel,
-  PanelHeaderTitle,
   PanelHeaderContent,
+  PanelHeaderTitle,
+  PanelLabel,
   StyledPanelHeader
 } from 'components/common/styled-components';
+import {FormattedMessage} from 'localization';
 
 const StyledMapDropdown = styled(StyledPanelHeader)`
   height: 48px;
@@ -59,11 +60,23 @@ const StyledMapDropdown = styled(StyledPanelHeader)`
     width: 40px;
   }
 `;
+MapStyleSelectorFactory.deps = [PanelHeaderActionFactory];
 
-function MapStyleSelectorFactory() {
-  const MapStyleSelector = ({mapStyle, onChange, toggleActive, isSelecting}) => (
+function MapStyleSelectorFactory(PanelHeaderAction) {
+  const defaultActionIcons = {
+    arrowDown: ArrowDown
+  };
+  const MapStyleSelector = ({
+    mapStyle,
+    onChange,
+    toggleActive,
+    isSelecting,
+    actionIcons = defaultActionIcons
+  }) => (
     <div>
-      <PanelLabel>Map style</PanelLabel>
+      <PanelLabel>
+        <FormattedMessage id={'mapManager.mapStyle'} />
+      </PanelLabel>
       {Object.keys(mapStyle.mapStyles).map(op => (
         <StyledMapDropdown
           className={classnames('map-dropdown-option', {
@@ -82,8 +95,8 @@ function MapStyleSelectorFactory() {
             <PanelHeaderAction
               className="map-dropdown-option__enable-config"
               id="map-enable-config"
-              IconComponent={ArrowDown}
-              tooltip={'Select Base Map Style'}
+              IconComponent={actionIcons.arrowDown}
+              tooltip={'tooltip.selectBaseMapStyle'}
               onClick={toggleActive}
             />
           ) : null}

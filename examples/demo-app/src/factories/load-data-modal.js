@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -18,26 +18,50 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-import {LoadDataModalFactory} from 'kepler.gl/components';
-import LoadDataModal from '../components/load-data-modal/load-data-modal';
-import {withState} from 'kepler.gl/components';
+import {LoadDataModalFactory, withState} from 'kepler.gl/components';
+import {LOADING_METHODS} from '../constants/default-settings';
 
-import {
-  loadRemoteMap,
-  loadSample,
-  switchToLoadingMethod
-} from '../actions';
+import SampleMapGallery from '../components/load-data-modal/sample-data-viewer';
+import LoadRemoteMap from '../components/load-data-modal/load-remote-map';
+import SampleMapsTab from '../components/load-data-modal/sample-maps-tab';
+import {loadRemoteMap, loadSample, loadSampleConfigurations} from '../actions';
 
-export const CustomLoadDataModalFactory = () =>
-  withState(
-    [],
-    state => ({...state.demo.app}),
-    {
-      onSwitchToLoadingMethod: switchToLoadingMethod,
-      onLoadSample: loadSample,
-      onLoadRemoteMap: loadRemoteMap
+const CustomLoadDataModalFactory = (...deps) => {
+  const LoadDataModal = LoadDataModalFactory(...deps);
+  const defaultLoadingMethods = LoadDataModal.defaultProps.loadingMethods;
+  const additionalMethods = {
+    remote: {
+      id: LOADING_METHODS.remote,
+      label: 'modal.loadData.remote',
+      elementType: LoadRemoteMap
+    },
+    sample: {
+      id: LOADING_METHODS.sample,
+      label: 'modal.loadData.sample',
+      elementType: SampleMapGallery,
+      tabElementType: SampleMapsTab
     }
-  )(LoadDataModal);
+  };
+
+  // add more loading methods
+  LoadDataModal.defaultProps = {
+    ...LoadDataModal.defaultProps,
+    loadingMethods: [
+      defaultLoadingMethods.find(lm => lm.id === 'upload'),
+      additionalMethods.remote,
+      defaultLoadingMethods.find(lm => lm.id === 'storage'),
+      additionalMethods.sample
+    ]
+  };
+
+  return withState([], state => ({...state.demo.app, ...state.demo.keplerGl.map.uiState}), {
+    onLoadSample: loadSample,
+    onLoadRemoteMap: loadRemoteMap,
+    loadSampleConfigurations
+  })(LoadDataModal);
+};
+
+CustomLoadDataModalFactory.deps = LoadDataModalFactory.deps;
 
 export function replaceLoadDataModal() {
   return [LoadDataModalFactory, CustomLoadDataModalFactory];

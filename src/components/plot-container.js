@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,24 +19,35 @@
 // THE SOFTWARE.
 
 // libraries
-import React, {Component} from 'react';
+import React, {Component, createRef} from 'react';
 import PropTypes from 'prop-types';
 import {createSelector} from 'reselect';
 import styled from 'styled-components';
 import {StaticMap} from 'react-map-gl';
 import debounce from 'lodash.debounce';
-import window from 'global/window';
 import {exportImageError} from 'utils/notifications-utils';
 import MapContainerFactory from './map-container';
-import {calculateExportImageSize, convertToPng} from 'utils/export-image-utils';
+import {convertToPng} from 'utils/export-utils';
 import {scaleMapStyleByResolution} from 'utils/map-style-utils/mapbox-gl-style-editor';
+import {getScaleFromImageSize} from 'utils/export-utils';
+import {findMapBounds} from 'utils/data-utils';
+import {getCenterAndZoomFromBounds} from 'utils/projection-utils';
+import {GEOCODER_LAYER_ID} from 'constants/default-settings';
+
+const CLASS_FILTER = ['mapboxgl-control-container', 'attrition-link', 'attrition-logo'];
+const DOM_FILTER_FUNC = node => !CLASS_FILTER.includes(node.className);
+const OUT_OF_SCREEN_POSITION = -9999;
 
 const propTypes = {
   width: PropTypes.number.isRequired,
   height: PropTypes.number.isRequired,
   exportImageSetting: PropTypes.object.isRequired,
   addNotification: PropTypes.func.isRequired,
-  mapFields: PropTypes.object.isRequired
+  mapFields: PropTypes.object.isRequired,
+  setExportImageSetting: PropTypes.object.isRequired,
+  setExportImageDataUri: PropTypes.func.isRequired,
+  setExportImageError: PropTypes.func.isRequired,
+  splitMaps: PropTypes.arrayOf(PropTypes.object)
 };
 
 PlotContainerFactory.deps = [MapContainerFactory];
@@ -44,47 +55,80 @@ PlotContainerFactory.deps = [MapContainerFactory];
 // Remove mapbox logo in exported map, because it contains non-ascii characters
 const StyledPlotContainer = styled.div`
   .mapboxgl-ctrl-bottom-left,
-  .mapboxgl-ctrl-bottom-right {
+  .mapboxgl-ctrl-bottom-right,
+  .mapbox-attribution-container {
     display: none;
   }
+
+  position: absolute;
+  top: ${OUT_OF_SCREEN_POSITION}px;
+  left: ${OUT_OF_SCREEN_POSITION}px;
 `;
+
+const StyledMapContainer = styled.div`
+  width: ${props => props.width}px;
+  height: ${props => props.height}px;
+  display: flex;
+`;
+
+const deckGlProps = {
+  glOptions: {
+    preserveDrawingBuffer: true,
+    useDevicePixels: false
+  }
+};
 
 export default function PlotContainerFactory(MapContainer) {
   class PlotContainer extends Component {
     constructor(props) {
       super(props);
       this._onMapRender = debounce(this._onMapRender, 500);
+      this._retrieveNewScreenshot = debounce(this._retrieveNewScreenshot, 500);
     }
 
-    componentWillMount() {
-      this.props.startExportingImage();
+    componentDidMount() {
+      this.props.setExportImageSetting({processing: true});
     }
 
-    componentWillReceiveProps(newProps) {
+    componentDidUpdate(prevProps) {
       // re-fetch the new screenshot only when ratio legend or resolution changes
       const checks = ['ratio', 'resolution', 'legend'];
       const shouldRetrieveScreenshot = checks.some(
-        item =>
-          this.props.exportImageSetting[item] !==
-          newProps.exportImageSetting[item]
+        item => this.props.exportImageSetting[item] !== prevProps.exportImageSetting[item]
       );
       if (shouldRetrieveScreenshot) {
+        this.props.setExportImageSetting({processing: true});
         this._retrieveNewScreenshot();
       }
     }
 
+    plottingAreaRef = createRef();
+
     mapStyleSelector = props => props.mapFields.mapStyle;
-    resolutionSelector = props => props.exportImageSetting.resolution;
+    mapScaleSelector = props => {
+      const {imageSize} = props.exportImageSetting;
+      const {mapState} = props.mapFields;
+      if (imageSize.scale) {
+        return imageSize.scale;
+      }
+
+      const scale = getScaleFromImageSize(
+        imageSize.imageW,
+        imageSize.imageH,
+        mapState.width * (mapState.isSplit ? 2 : 1),
+        mapState.height
+      );
+
+      return scale > 0 ? scale : 1;
+    };
+
     scaledMapStyleSelector = createSelector(
       this.mapStyleSelector,
-      this.resolutionSelector,
-      (mapStyle, resolution) => ({
+      this.mapScaleSelector,
+      (mapStyle, scale) => ({
         ...mapStyle,
-        bottomMapStyle: scaleMapStyleByResolution(
-          mapStyle.bottomMapStyle,
-          resolution
-        ),
-        topMapStyle: scaleMapStyleByResolution(mapStyle.topMapStyle, resolution)
+        bottomMapStyle: scaleMapStyleByResolution(mapStyle.bottomMapStyle, scale),
+        topMapStyle: scaleMapStyleByResolution(mapStyle.topMapStyle, scale)
       })
     );
 
@@ -94,53 +138,62 @@ export default function PlotContainerFactory(MapContainer) {
       }
     };
 
-    _onRetrievingFinish = (devicePixelRatio) => {
-      window.devicePixelRatio = devicePixelRatio;
-    };
-
     _retrieveNewScreenshot = () => {
-
-      if (this.plottingAreaRef) {
-      // setting windowDevicePixelRatio to 1
-      // so that large mapbox base map will load in full
-        const savedDevicePixelRatio = window.devicePixelRatio;
-        window.devicePixelRatio = 1;
-
-        this.props.startExportingImage();
-        const filter = node => node.className !== 'mapboxgl-control-container';
-
-        convertToPng(this.plottingAreaRef, {filter}).then(dataUri => {
-          this.props.setExportImageDataUri(dataUri);
-          this._onRetrievingFinish(savedDevicePixelRatio);
-        })
-        .catch(err => {
-          this.props.setExportImageError(err);
-          this.props.addNotification(exportImageError({err}));
-          this._onRetrievingFinish(savedDevicePixelRatio);
-        });
+      if (this.plottingAreaRef.current) {
+        convertToPng(this.plottingAreaRef.current, {filter: DOM_FILTER_FUNC})
+          .then(this.props.setExportImageDataUri)
+          .catch(err => {
+            this.props.setExportImageError(err);
+            if (this.props.enableErrorNotification) {
+              this.props.addNotification(exportImageError({err}));
+            }
+          });
       }
     };
 
     render() {
-      const {width, height, exportImageSetting, mapFields} = this.props;
-      const {ratio, resolution, legend} = exportImageSetting;
-      const exportImageSize = calculateExportImageSize({
+      const {exportImageSetting, mapFields, splitMaps} = this.props;
+      const {imageSize = {}, legend} = exportImageSetting;
+      const {mapState} = mapFields;
+      const isSplit = splitMaps && splitMaps.length > 1;
+
+      const size = {
+        width: imageSize.imageW || 1,
+        height: imageSize.imageH || 1
+      };
+      const width = size.width / (isSplit ? 2 : 1);
+      const height = size.height;
+      const scale = this.mapScaleSelector(this.props);
+      const newMapState = {
+        ...mapState,
         width,
         height,
-        ratio,
-        resolution
-      });
+        zoom: mapState.zoom + (Math.log2(scale) || 0)
+      };
+
+      // center and all layer bounds
+      if (exportImageSetting.center) {
+        const renderedLayers = mapFields.layers.filter(
+          (layer, idx) =>
+            layer.id !== GEOCODER_LAYER_ID && layer.shouldRenderLayer(mapFields.layerData[idx])
+        );
+        const bounds = findMapBounds(renderedLayers);
+        const centerAndZoom = getCenterAndZoomFromBounds(bounds, {width, height});
+        if (centerAndZoom) {
+          const zoom = Number.isFinite(centerAndZoom.zoom) ? centerAndZoom.zoom : mapState.zoom;
+
+          newMapState.longitude = centerAndZoom.center[0];
+          newMapState.latitude = centerAndZoom.center[1];
+          newMapState.zoom = zoom + Number(Math.log2(scale) || 0);
+        }
+      }
 
       const mapProps = {
         ...mapFields,
         mapStyle: this.scaledMapStyleSelector(this.props),
 
         // override viewport based on export settings
-        mapState: {
-          ...mapFields.mapState,
-          ...exportImageSize,
-          zoom: mapFields.mapState.zoom + exportImageSize.zoomOffset
-        },
+        mapState: newMapState,
         mapControls: {
           // override map legend visibility
           mapLegend: {
@@ -148,29 +201,30 @@ export default function PlotContainerFactory(MapContainer) {
             active: true
           }
         },
-        MapComponent: StaticMap
+        MapComponent: StaticMap,
+        onMapRender: this._onMapRender,
+        isExport: true,
+        deckGlProps
       };
 
+      const mapContainers = !isSplit ? (
+        <MapContainer index={0} {...mapProps} />
+      ) : (
+        splitMaps.map((settings, index) => (
+          <MapContainer
+            key={index}
+            index={index}
+            {...mapProps}
+            mapLayers={splitMaps[index].layers}
+          />
+        ))
+      );
+
       return (
-        <StyledPlotContainer
-          style={{position: 'absolute', top: -9999, left: -9999}}
-        >
-          <div
-            ref={element => {
-              this.plottingAreaRef = element;
-            }}
-            style={{
-              width: exportImageSize.width,
-              height: exportImageSize.height
-            }}
-          >
-            <MapContainer
-              index={0}
-              onMapRender={this._onMapRender}
-              isExport
-              {...mapProps}
-            />
-          </div>
+        <StyledPlotContainer className="export-map-instance">
+          <StyledMapContainer ref={this.plottingAreaRef} width={size.width} height={size.height}>
+            {mapContainers}
+          </StyledMapContainer>
         </StyledPlotContainer>
       );
     }

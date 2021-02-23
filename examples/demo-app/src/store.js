@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,6 +23,7 @@ import {routerReducer, routerMiddleware} from 'react-router-redux';
 import {browserHistory} from 'react-router';
 import {enhanceReduxMiddleware} from 'kepler.gl/middleware';
 import thunk from 'redux-thunk';
+// eslint-disable-next-line no-unused-vars
 import window from 'global/window';
 
 import demoReducer from './reducers/index';
@@ -32,20 +33,27 @@ const reducers = combineReducers({
   routing: routerReducer
 });
 
-export const middlewares = enhanceReduxMiddleware([
-  thunk,
-  routerMiddleware(browserHistory)
-]);
+export const middlewares = enhanceReduxMiddleware([thunk, routerMiddleware(browserHistory)]);
 
 export const enhancers = [applyMiddleware(...middlewares)];
 
 const initialState = {};
 
-// add redux devtools
-const composeEnhancers = window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__ || compose;
+// eslint-disable-next-line prefer-const
+let composeEnhancers = compose;
 
-export default createStore(
-  reducers,
-  initialState,
-  composeEnhancers(...enhancers)
-);
+/**
+ * comment out code below to enable Redux Devtools
+ */
+
+if (window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__) {
+  composeEnhancers = window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__({
+    actionsBlacklist: [
+      '@@kepler.gl/MOUSE_MOVE',
+      '@@kepler.gl/UPDATE_MAP',
+      '@@kepler.gl/LAYER_HOVER'
+    ]
+  });
+}
+
+export default createStore(reducers, initialState, composeEnhancers(...enhancers));

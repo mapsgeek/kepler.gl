@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,8 +23,7 @@ export const ADDRESS_PREFIX = '@@KG_';
 
 import curry from 'lodash.curry';
 
-export const getActionForwardAddress = id =>
-  `${ADDRESS_PREFIX}${id.toUpperCase()}`;
+export const getActionForwardAddress = id => `${ADDRESS_PREFIX}${id.toUpperCase()}`;
 
 /**
  * Wrap an action into a forward action that only modify the state of a specific
@@ -56,7 +55,7 @@ export const getActionForwardAddress = id =>
  * @memberof forwardActions
  * @param {string} id - The id to forward to
  * @param {Object} action - the action object {type: string, payload: *}
- * @returns {{type: string, payload: {type: string: payload: *, meta: {_id_: string}, meta: {_forward_: string, _addr_: string}}}}
+ * @returns {{type: string, payload: {type: string, payload: *, meta: {_id_: string}, meta: {_forward_: string, _addr_: string}}}}
  * @public
  * @example
  *
@@ -108,8 +107,7 @@ export const isForwardAction = action => {
  * @returns {Object} - unwrapped action
  * @public
  */
-export const unwrap = action =>
-  isForwardAction(action) ? unwrap(action.payload) : action;
+export const unwrap = action => (isForwardAction(action) ? unwrap(action.payload) : action);
 
 /**
  * Given an id, returns the action for that id.
@@ -121,7 +119,9 @@ export const unwrap = action =>
  */
 export const _actionFor = (id, action) =>
   isForwardAction(action)
-    ? action.meta._addr_ === getActionForwardAddress(id) ? action.payload : {}
+    ? action.meta._addr_ === getActionForwardAddress(id)
+      ? action.payload
+      : {}
     : action;
 
 /**
@@ -152,8 +152,7 @@ export const _actionFor = (id, action) =>
  *  mapDispatchToProps
  * )(MapContainer);
  */
-export const forwardTo = (id, dispatch) => action =>
-  dispatch(wrapTo(id, action));
+export const forwardTo = (id, dispatch) => action => dispatch(wrapTo(id, action));
 
 /**
  * Update the state of a kepler.gl instance
@@ -179,5 +178,6 @@ export const _updateProperty = (state, id, nextState) =>
  * @public
  */
 /* eslint-disable no-unused-vars */
-const forwardActions = null
+// @ts-ignore
+const forwardActions = null;
 /* eslint-enable no-unused-vars */

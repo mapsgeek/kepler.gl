@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -31,21 +31,25 @@ test('#mapStyleSchema -> v1 -> save load mapStyle', t => {
   const msToSave = savedState.config.mapStyle;
   const msLoaded = SchemaManager.parseSavedConfig(savedState).mapStyle;
 
-  t.deepEqual(Object.keys(msToSave),
-    ['styleType', 'topLayerGroups', 'visibleLayerGroups', 'mapStyles'],
-    'mapStyle should have all 4 entries');
+  t.deepEqual(
+    Object.keys(msToSave),
+    ['styleType', 'topLayerGroups', 'visibleLayerGroups', 'threeDBuildingColor', 'mapStyles'],
+    'mapStyle should have all 4 entries'
+  );
 
   const expectedSaved = {
     styleType: 'dark',
     topLayerGroups: {},
     visibleLayerGroups: {},
-    mapStyles: {}
+    mapStyles: {},
+    threeDBuildingColor: [209, 206, 199]
   };
 
   const expectedLoaded = {
     styleType: 'dark',
     topLayerGroups: {},
-    visibleLayerGroups: {}
+    visibleLayerGroups: {},
+    threeDBuildingColor: [209, 206, 199]
   };
 
   t.deepEqual(msToSave, expectedSaved, 'saved mapStyle should be current');
@@ -68,12 +72,14 @@ test('#mapStyleSchema -> v1 -> save load mapStyle with custom style', t => {
       label: true,
       road: true
     },
+    threeDBuildingColor: [1, 2, 3],
     mapStyles: {
-      'smoothie_the_cat': {
+      smoothie_the_cat: {
         id: 'smoothie_the_cat',
         accessToken: 'secret_token',
         label: 'Smoothie the Cat',
-        icon: 'data:image/png;base64,xyz',
+        icon:
+          'https://api.mapbox.com/styles/v1/shanhe/smoothie.the.cat/static/-122.3391,37.7922,9,0,0/400x300?access_token=secret_token&logo=false&attribution=false',
         custom: true,
         url: 'mapbox://styles/shanhe/smoothie.the.cat'
       }

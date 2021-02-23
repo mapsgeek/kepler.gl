@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -29,63 +29,35 @@ const libSources = join(rootDir, 'src');
 const console = require('global/console');
 
 const BABEL_CONFIG = {
-  presets: [
-    '@babel/preset-env',
-    '@babel/preset-react'
-  ],
+  presets: ['@babel/preset-env', '@babel/preset-react'],
   plugins: [
-    ['@babel/plugin-proposal-decorators', {legacy: true }],
     '@babel/plugin-proposal-class-properties',
-    ['@babel/transform-runtime', {
-      regenerator: true
-    }],
-    '@babel/plugin-syntax-dynamic-import',
-    '@babel/plugin-syntax-import-meta',
-    '@babel/plugin-proposal-json-strings',
-    '@babel/plugin-proposal-function-sent',
     '@babel/plugin-proposal-export-namespace-from',
-    '@babel/plugin-proposal-numeric-separator',
-    '@babel/plugin-proposal-throw-expressions',
-    '@babel/plugin-proposal-export-default-from',
-    '@babel/plugin-proposal-logical-assignment-operators',
-    '@babel/plugin-proposal-optional-chaining',
-    [
-      '@babel/plugin-proposal-pipeline-operator',
-      {
-        proposal: 'minimal'
-      }
-    ],
-    '@babel/plugin-proposal-nullish-coalescing-operator',
-    '@babel/plugin-proposal-do-expressions',
-    '@babel/plugin-proposal-function-bind',
-    '@babel/plugin-transform-modules-commonjs',
-    ['inline-json-import', {}],
     [
       'module-resolver',
       {
-        root: [
-          '../src'
-        ],
+        root: ['../src'],
         alias: {
           test: '../test'
         }
       }
     ],
-    ['search-and-replace', {
-      rules: [
-        {
-          search: '__PACKAGE_VERSION__',
-          replace: KeplerPackage.version
-        }
-      ]
-    }]
+    [
+      'search-and-replace',
+      {
+        rules: [
+          {
+            search: '__PACKAGE_VERSION__',
+            replace: KeplerPackage.version
+          }
+        ]
+      }
+    ]
   ]
 };
 
 const COMMON_CONFIG = {
-  entry: [
-    './src/main'
-  ],
+  entry: ['./src/main'],
   output: {
     path: resolve(__dirname, 'build'),
     filename: 'bundle.js',
@@ -99,7 +71,9 @@ const COMMON_CONFIG = {
       'kepler.gl': libSources,
       react: resolve(rootDir, './node_modules/react'),
       'styled-components': resolve(rootDir, './node_modules/styled-components'),
-      'react-palm': resolve(rootDir, './node_modules/react-palm')
+      'react-redux': resolve(rootDir, './node_modules/react-redux'),
+      'react-palm': resolve(rootDir, './node_modules/react-palm'),
+      'react-intl': resolve(rootDir, './node_modules/react-intl')
     }
   },
 
@@ -134,11 +108,14 @@ const COMMON_CONFIG = {
 
   // Optional: Enables reading mapbox token from environment variable
   plugins: [
-    new webpack.EnvironmentPlugin([
-      'MapboxAccessToken',
-      'DropboxClientId',
-      'MapboxExportToken'
-    ])
+    // Provide default values to suppress warnings
+    new webpack.EnvironmentPlugin({
+      MapboxAccessToken: undefined,
+      DropboxClientId: null,
+      CartoClientId: null,
+      GoogleDriveClientId: null,
+      MapboxExportToken: null
+    })
   ],
 
   // Required to avoid deck.gl undefined module when code is minified
@@ -197,20 +174,28 @@ module.exports = env => {
   if (env.prod) {
     if (!process.env.MapboxAccessToken) {
       logError('Error! MapboxAccessToken is not defined');
-      logInstruction(`Make sure to run "export MapboxAccessToken=<token>" before deploy the website`);
-      logInstruction('You can get the token at https://www.mapbox.com/help/how-access-tokens-work/');
+      logInstruction(
+        `Make sure to run "export MapboxAccessToken=<token>" before deploy the website`
+      );
+      logInstruction(
+        'You can get the token at https://www.mapbox.com/help/how-access-tokens-work/'
+      );
       throw new Error('Missing Mapbox Access token');
     }
     if (!process.env.DropboxClientId) {
       logError('Error! DropboxClientId is not defined');
-      logInstruction(`Make sure to run "export MapboxExportToken=<token>" before deploy the website`);
+      logInstruction(`Make sure to run "export DropboxClientId=<token>" before deploy the website`);
       logInstruction('You can get the token at https://www.dropbox.com/developers');
       throw new Error('Missing Export DropboxClientId Access token');
     }
     if (!process.env.MapboxExportToken) {
       logError('Error! MapboxExportToken is not defined');
-      logInstruction(`Make sure to run "export MapboxExportToken=<token>" before deploy the website`);
-      logInstruction('You can get the token at https://www.mapbox.com/help/how-access-tokens-work/');
+      logInstruction(
+        `Make sure to run "export MapboxExportToken=<token>" before deploy the website`
+      );
+      logInstruction(
+        'You can get the token at https://www.mapbox.com/help/how-access-tokens-work/'
+      );
       throw new Error('Missing Export Mapbox Access token, used to generate the single map file');
     }
     config = addProdConfig(config);

@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -20,133 +20,160 @@
 
 import uniq from 'lodash.uniq';
 import pick from 'lodash.pick';
+import flattenDeep from 'lodash.flattendeep';
+import {isObject, arrayInsert} from 'utils/utils';
+import {applyFiltersToDatasets, validateFiltersUpdateDatasets} from 'utils/filter-utils';
 
-import {
-  getDefaultFilter,
-  getFilterProps,
-  getFilterPlot,
-  filterData,
-  adjustValueToFilterDomain
-} from 'utils/filter-utils';
-
+import {getInitialMapLayersForSplitMap} from 'utils/split-map-utils';
+import {resetFilterGpuMode, assignGpuChannels} from 'utils/gpu-filter-utils';
 import {LAYER_BLENDINGS} from 'constants/default-settings';
+import {CURRENT_VERSION, visStateSchema} from 'schemas';
 
 /**
  * Merge loaded filters with current state, if no fields or data are loaded
  * save it for later
  *
- * @param {Object} state
- * @param {Array<Object>} filtersToMerge
- * @return {Object} updatedState
+ * @type {typeof import('./vis-state-merger').mergeFilters}
  */
 export function mergeFilters(state, filtersToMerge) {
-  const merged = [];
-  const unmerged = [];
-  const {datasets} = state;
-
   if (!Array.isArray(filtersToMerge) || !filtersToMerge.length) {
     return state;
   }
 
-  // merge filters
-  filtersToMerge.forEach(filter => {
-    // match filter.dataId with current datesets id
-    // uploaded data need to have the same dataId with the filter
-    if (datasets[filter.dataId]) {
-      // datasets is already loaded
-      const validateFilter = validateFilterWithData(
-        datasets[filter.dataId],
-        filter
-      );
+  const {validated, failed, updatedDatasets} = validateFiltersUpdateDatasets(state, filtersToMerge);
 
-      if (validateFilter) {
-        merged.push(validateFilter);
-      }
-    } else {
-      // datasets not yet loaded
-      unmerged.push(filter);
-    }
-  });
-
+  // merge filter with existing
+  let updatedFilters = [...(state.filters || []), ...validated];
+  updatedFilters = resetFilterGpuMode(updatedFilters);
+  updatedFilters = assignGpuChannels(updatedFilters);
   // filter data
-  const updatedFilters = [...(state.filters || []), ...merged];
-  const datasetToFilter = uniq(merged.map(d => d.dataId));
+  const datasetsToFilter = uniq(flattenDeep(validated.map(f => f.dataId)));
 
-  const updatedDataset = datasetToFilter.reduce(
-    (accu, dataId) => ({
-      ...accu,
-      [dataId]: {
-        ...datasets[dataId],
-        ...filterData(datasets[dataId].allData, dataId, updatedFilters)
-      }
-    }),
-    datasets
+  const filtered = applyFiltersToDatasets(
+    datasetsToFilter,
+    updatedDatasets,
+    updatedFilters,
+    state.layers
   );
 
   return {
     ...state,
     filters: updatedFilters,
-    datasets: updatedDataset,
-    filterToBeMerged: unmerged
+    datasets: filtered,
+    filterToBeMerged: [...state.filterToBeMerged, ...failed]
   };
+}
+
+export function createLayerFromConfig(state, layerConfig) {
+  // first validate config against dataset
+  const {validated, failed} = validateLayersByDatasets(state.datasets, state.layerClasses, [
+    layerConfig
+  ]);
+
+  if (failed.length || !validated.length) {
+    // failed
+    return null;
+  }
+
+  const newLayer = validated[0];
+  newLayer.updateLayerDomain(state.datasets);
+  return newLayer;
+}
+
+export function serializeLayer(newLayer) {
+  const savedVisState = visStateSchema[CURRENT_VERSION].save({
+    layers: [newLayer],
+    layerOrder: [0]
+  }).visState;
+  const loadedLayer = visStateSchema[CURRENT_VERSION].load(savedVisState).visState.layers[0];
+  return loadedLayer;
 }
 
 /**
  * Merge layers from de-serialized state, if no fields or data are loaded
  * save it for later
  *
- * @param {Object} state
- * @param {Array<Object>} layersToMerge
- * @return {Object} state
+ * @type {typeof import('./vis-state-merger').mergeLayers}
  */
-export function mergeLayers(state, layersToMerge) {
-  const mergedLayer = [];
-  const unmerged = [];
-
-  const {datasets} = state;
+export function mergeLayers(state, layersToMerge, fromConfig) {
+  const preserveLayerOrder = fromConfig ? layersToMerge.map(l => l.id) : state.preserveLayerOrder;
 
   if (!Array.isArray(layersToMerge) || !layersToMerge.length) {
     return state;
   }
 
-  layersToMerge.forEach(layer => {
-    if (datasets[layer.config.dataId]) {
-      // datasets are already loaded
-      const validateLayer = validateLayerWithData(
-        datasets[layer.config.dataId],
-        layer,
-        state.layerClasses
-      );
-
-      if (validateLayer) {
-        mergedLayer.push(validateLayer);
-      }
-    } else {
-      // datasets not yet loaded
-      unmerged.push(layer);
-    }
-  });
-
-  const layers = [...state.layers, ...mergedLayer];
-  const newLayerOrder = mergedLayer.map((_, i) => state.layers.length + i);
+  const {validated: mergedLayer, failed: unmerged} = validateLayersByDatasets(
+    state.datasets,
+    state.layerClasses,
+    layersToMerge
+  );
 
   // put new layers in front of current layers
-  const layerOrder = [...newLayerOrder, ...state.layerOrder];
+  const {newLayerOrder, newLayers} = insertLayerAtRightOrder(
+    state.layers,
+    mergedLayer,
+    state.layerOrder,
+    preserveLayerOrder
+  );
 
   return {
     ...state,
-    layers,
-    layerOrder,
-    layerToBeMerged: unmerged
+    layers: newLayers,
+    layerOrder: newLayerOrder,
+    preserveLayerOrder,
+    layerToBeMerged: [...state.layerToBeMerged, ...unmerged]
+  };
+}
+
+export function insertLayerAtRightOrder(
+  currentLayers,
+  layersToInsert,
+  currentOrder,
+  preservedOrder = []
+) {
+  // perservedOrder ['a', 'b', 'c'];
+  // layerOrder [1, 0, 3]
+  // layerOrderMap ['a', 'c']
+  let layerOrderQueue = currentOrder.map(i => currentLayers[i].id);
+  let newLayers = currentLayers;
+
+  for (const newLayer of layersToInsert) {
+    // find where to insert it
+    const expectedIdx = preservedOrder.indexOf(newLayer.id);
+    // if cant find place to insert, insert at the font
+    let insertAt = 0;
+
+    if (expectedIdx > 0) {
+      // look for layer to insert after
+      let i = expectedIdx + 1;
+      let preceedIdx = null;
+      while (i-- > 0 && preceedIdx === null) {
+        const preceedLayer = preservedOrder[expectedIdx - 1];
+        preceedIdx = layerOrderQueue.indexOf(preceedLayer);
+      }
+
+      if (preceedIdx > -1) {
+        insertAt = preceedIdx + 1;
+      }
+    }
+
+    layerOrderQueue = arrayInsert(layerOrderQueue, insertAt, newLayer.id);
+    newLayers = newLayers.concat(newLayer);
+  }
+
+  // reconstruct layerOrder after insert
+  const newLayerOrder = layerOrderQueue.map(id => newLayers.findIndex(l => l.id === id));
+
+  return {
+    newLayerOrder,
+    newLayers
   };
 }
 
 /**
  * Merge interactions with saved config
  *
- * @param {Object} state
- * @param {Object} interactionToBeMerged
- * @return {Object} mergedState
+ * @type {typeof import('./vis-state-merger').mergeInteractions}
  */
 export function mergeInteractions(state, interactionToBeMerged) {
   const merged = {};
@@ -158,19 +185,18 @@ export function mergeInteractions(state, interactionToBeMerged) {
         return;
       }
 
+      const currentConfig = state.interactionConfig[key].config;
+
       const {enabled, ...configSaved} = interactionToBeMerged[key] || {};
       let configToMerge = configSaved;
 
       if (key === 'tooltip') {
-        const {mergedTooltip, unmergedTooltip} = mergeInteractionTooltipConfig(
-          state,
-          configSaved
-        );
+        const {mergedTooltip, unmergedTooltip} = mergeInteractionTooltipConfig(state, configSaved);
 
         // merge new dataset tooltips with original dataset tooltips
         configToMerge = {
           fieldsToShow: {
-            ...state.interactionConfig[key].config.fieldsToShow,
+            ...currentConfig.fieldsToShow,
             ...mergedTooltip
           }
         };
@@ -183,13 +209,17 @@ export function mergeInteractions(state, interactionToBeMerged) {
       merged[key] = {
         ...state.interactionConfig[key],
         enabled,
-        config: pick(
-          {
-            ...state.interactionConfig[key].config,
-            ...configToMerge
-          },
-          Object.keys(state.interactionConfig[key].config)
-        )
+        ...(currentConfig
+          ? {
+              config: pick(
+                {
+                  ...currentConfig,
+                  ...configToMerge
+                },
+                Object.keys(currentConfig)
+              )
+            }
+          : {})
       };
     });
   }
@@ -205,21 +235,52 @@ export function mergeInteractions(state, interactionToBeMerged) {
 }
 
 /**
+ * Merge splitMaps config with current visStete.
+ * 1. if current map is split, but splitMap DOESNOT contain maps
+ *    : don't merge anything
+ * 2. if current map is NOT split, but splitMaps contain maps
+ *    : add to splitMaps, and add current layers to splitMaps
+ * @type {typeof import('./vis-state-merger').mergeInteractions}
+ */
+export function mergeSplitMaps(state, splitMaps = []) {
+  const merged = [...state.splitMaps];
+  const unmerged = [];
+  splitMaps.forEach((sm, i) => {
+    Object.entries(sm.layers).forEach(([id, value]) => {
+      // check if layer exists
+      const pushTo = state.layers.find(l => l.id === id) ? merged : unmerged;
+
+      // create map panel if current map is not split
+      pushTo[i] = pushTo[i] || {
+        layers: pushTo === merged ? getInitialMapLayersForSplitMap(state.layers) : []
+      };
+      pushTo[i].layers = {
+        ...pushTo[i].layers,
+        [id]: value
+      };
+    });
+  });
+
+  return {
+    ...state,
+    splitMaps: merged,
+    splitMapsToBeMerged: [...state.splitMapsToBeMerged, ...unmerged]
+  };
+}
+
+/**
  * Merge interactionConfig.tooltip with saved config,
  * validate fieldsToShow
  *
- * @param {string} state
- * @param {Object} tooltipConfig
- * @return {Object} - {mergedTooltip: {}, unmergedTooltip: {}}
+ * @param {object} state
+ * @param {object} tooltipConfig
+ * @return {object} - {mergedTooltip: {}, unmergedTooltip: {}}
  */
 export function mergeInteractionTooltipConfig(state, tooltipConfig = {}) {
   const unmergedTooltip = {};
   const mergedTooltip = {};
 
-  if (
-    !tooltipConfig.fieldsToShow ||
-    !Object.keys(tooltipConfig.fieldsToShow).length
-  ) {
+  if (!tooltipConfig.fieldsToShow || !Object.keys(tooltipConfig.fieldsToShow).length) {
     return {mergedTooltip, unmergedTooltip};
   }
 
@@ -230,8 +291,8 @@ export function mergeInteractionTooltipConfig(state, tooltipConfig = {}) {
     } else {
       // if dataset is loaded
       const allFields = state.datasets[dataId].fields.map(d => d.name);
-      const foundFieldsToShow = tooltipConfig.fieldsToShow[dataId].filter(
-        name => allFields.includes(name)
+      const foundFieldsToShow = tooltipConfig.fieldsToShow[dataId].filter(field =>
+        allFields.includes(field.name)
       );
 
       mergedTooltip[dataId] = foundFieldsToShow;
@@ -243,15 +304,32 @@ export function mergeInteractionTooltipConfig(state, tooltipConfig = {}) {
 /**
  * Merge layerBlending with saved
  *
- * @param {object} state
- * @param {string} layerBlending
- * @return {object} merged state
+ * @type {typeof import('./vis-state-merger').mergeLayerBlending}
  */
 export function mergeLayerBlending(state, layerBlending) {
   if (layerBlending && LAYER_BLENDINGS[layerBlending]) {
     return {
       ...state,
       layerBlending
+    };
+  }
+
+  return state;
+}
+
+/**
+ * Merge animation config
+ * @type {typeof import('./vis-state-merger').mergeAnimationConfig}
+ */
+export function mergeAnimationConfig(state, animation) {
+  if (animation && animation.currentTime) {
+    return {
+      ...state,
+      animationConfig: {
+        ...state.animationConfig,
+        ...animation,
+        domain: null
+      }
     };
   }
 
@@ -268,27 +346,44 @@ export function mergeLayerBlending(state, layerBlending) {
  * @return {null | Object} - validated columns or null
  */
 
-export function validateSavedLayerColumns(fields, savedCols, emptyCols) {
-  const colFound = {};
-  // find actual column fieldIdx, in case it has changed
-  const allColFound = Object.keys(emptyCols).every(key => {
+export function validateSavedLayerColumns(fields, savedCols = {}, emptyCols) {
+  // Prepare columns for the validator
+  const columns = {};
+  for (const key of Object.keys(emptyCols)) {
+    columns[key] = {...emptyCols[key]};
+
     const saved = savedCols[key];
-    colFound[key] = {...emptyCols[key]};
+    if (saved) {
+      const fieldIdx = fields.findIndex(({name}) => name === saved);
 
-    const fieldIdx = fields.findIndex(({name}) => name === saved);
-
-    if (fieldIdx > -1) {
-      // update found columns
-      colFound[key].fieldIdx = fieldIdx;
-      colFound[key].value = saved;
-      return true;
+      if (fieldIdx > -1) {
+        // update found columns
+        columns[key].fieldIdx = fieldIdx;
+        columns[key].value = saved;
+      }
     }
+  }
 
-    // if col is optional, allow null value
-    return emptyCols[key].optional || false;
-  });
+  // find actual column fieldIdx, in case it has changed
+  const allColFound = Object.keys(columns).every(key =>
+    validateColumn(columns[key], columns, fields)
+  );
 
-  return allColFound && colFound;
+  if (allColFound) {
+    return columns;
+  }
+
+  return null;
+}
+
+export function validateColumn(column, columns, allFields) {
+  if (column.optional || column.value) {
+    return true;
+  }
+  if (column.validator) {
+    return column.validator(column, columns, allFields);
+  }
+  return false;
 }
 
 /**
@@ -300,181 +395,149 @@ export function validateSavedLayerColumns(fields, savedCols, emptyCols) {
  * @return {Object} - validated textlabel
  */
 export function validateSavedTextLabel(fields, [layerTextLabel], savedTextLabel) {
-  const savedTextLabels = Array.isArray(savedTextLabel) ?
-    savedTextLabel : [savedTextLabel];
+  const savedTextLabels = Array.isArray(savedTextLabel) ? savedTextLabel : [savedTextLabel];
 
   // validate field
   return savedTextLabels.map(textLabel => {
-    const field = textLabel.field ? fields.find(fd =>
-      Object.keys(textLabel.field).every(
-        key => textLabel.field[key] === fd[key]
-      )
-    ) : null;
+    const field = textLabel.field
+      ? fields.find(fd =>
+          Object.keys(textLabel.field).every(key => textLabel.field[key] === fd[key])
+        )
+      : null;
 
-    return Object.keys(layerTextLabel).reduce((accu, key) => ({
-      ...accu,
-      [key]: key === 'field' ? field : (textLabel[key] || layerTextLabel[key])
-    }), {});
+    return Object.keys(layerTextLabel).reduce(
+      (accu, key) => ({
+        ...accu,
+        [key]: key === 'field' ? field : textLabel[key] || layerTextLabel[key]
+      }),
+      {}
+    );
   });
 }
 
 /**
  * Validate saved visual channels config with new data,
  * refer to vis-state-schema.js VisualChannelSchemaV1
- *
- * @param {Array<Object>} fields
- * @param {Object} visualChannels
- * @param {Object} savedLayer
- * @return {Object} - validated visual channel in config or {}
+ * @type {typeof import('./vis-state-merger').validateSavedVisualChannels}
  */
-export function validateSavedVisualChannels(
-  fields,
-  visualChannels,
-  savedLayer
-) {
-  return Object.values(visualChannels).reduce((found, {field, scale}) => {
+export function validateSavedVisualChannels(fields, newLayer, savedLayer) {
+  Object.values(newLayer.visualChannels).forEach(({field, scale, key}) => {
     let foundField;
-    if (savedLayer.config[field]) {
-      foundField = fields.find(fd =>
-        Object.keys(savedLayer.config[field]).every(
-          key => savedLayer.config[field][key] === fd[key]
-        )
-      );
-    }
+    if (savedLayer.config) {
+      if (savedLayer.config[field]) {
+        foundField = fields.find(
+          fd => savedLayer.config && fd.name === savedLayer.config[field].name
+        );
+      }
 
-    return {
-      ...found,
-      ...(foundField ? {[field]: foundField} : {}),
-      ...(savedLayer.config[scale] ? {[scale]: savedLayer.config[scale]} : {})
-    };
-  }, {});
+      const foundChannel = {
+        ...(foundField ? {[field]: foundField} : {}),
+        ...(savedLayer.config[scale] ? {[scale]: savedLayer.config[scale]} : {})
+      };
+      if (Object.keys(foundChannel).length) {
+        newLayer.updateLayerConfig(foundChannel);
+      }
+
+      newLayer.validateVisualChannel(key);
+    }
+  });
+  return newLayer;
 }
 
+export function validateLayersByDatasets(datasets, layerClasses, layers) {
+  const validated = [];
+  const failed = [];
+
+  layers.forEach(layer => {
+    let validateLayer;
+    if (!layer || !layer.config) {
+      validateLayer = null;
+    } else if (datasets[layer.config.dataId]) {
+      // datasets are already loaded
+      validateLayer = validateLayerWithData(datasets[layer.config.dataId], layer, layerClasses);
+    }
+
+    if (validateLayer) {
+      validated.push(validateLayer);
+    } else {
+      // datasets not yet loaded
+      failed.push(layer);
+    }
+  });
+
+  return {validated, failed};
+}
 /**
  * Validate saved layer config with new data,
  * update fieldIdx based on new fields
- *
- * @param {Array<Object>} fields
- * @param {string} dataId
- * @param {Object} savedLayer
- * @param {Object} layerClasses
- * @return {null | Object} - validated layer or null
+ * @type {typeof import('./vis-state-merger').validateLayerWithData}
  */
-export function validateLayerWithData({fields, id: dataId}, savedLayer, layerClasses) {
+export function validateLayerWithData(
+  {fields, id: dataId},
+  savedLayer,
+  layerClasses,
+  options = {}
+) {
   const {type} = savedLayer;
   // layer doesnt have a valid type
-  if (
-    !layerClasses.hasOwnProperty(type) ||
-    !savedLayer.config ||
-    !savedLayer.config.columns
-  ) {
+  if (!type || !layerClasses.hasOwnProperty(type) || !savedLayer.config) {
     return null;
   }
 
-  const newLayer = new layerClasses[type]({
+  let newLayer = new layerClasses[type]({
     id: savedLayer.id,
     dataId,
     label: savedLayer.config.label,
     color: savedLayer.config.color,
-    isVisible: savedLayer.config.isVisible
+    isVisible: savedLayer.config.isVisible,
+    hidden: savedLayer.config.hidden
   });
 
   // find column fieldIdx
-  const columns = validateSavedLayerColumns(
-    fields,
-    savedLayer.config.columns,
-    newLayer.getLayerColumns()
-  );
-
-  if (!columns) {
-    return null;
+  const columnConfig = newLayer.getLayerColumns();
+  if (Object.keys(columnConfig).length) {
+    const columns = validateSavedLayerColumns(fields, savedLayer.config.columns, columnConfig);
+    if (columns) {
+      newLayer.updateLayerConfig({columns});
+    } else if (!options.allowEmptyColumn) {
+      return null;
+    }
   }
 
   // visual channel field is saved to be {name, type}
   // find visual channel field by matching both name and type
   // refer to vis-state-schema.js VisualChannelSchemaV1
-  const foundVisualChannelConfigs = validateSavedVisualChannels(
-    fields,
-    newLayer.visualChannels,
-    savedLayer
-  );
+  newLayer = validateSavedVisualChannels(fields, newLayer, savedLayer);
 
-  const textLabel = savedLayer.config.textLabel && newLayer.config.textLabel ? validateSavedTextLabel(
-    fields,
-    newLayer.config.textLabel,
-    savedLayer.config.textLabel
-  ) : newLayer.config.textLabel;
+  const textLabel =
+    savedLayer.config.textLabel && newLayer.config.textLabel
+      ? validateSavedTextLabel(fields, newLayer.config.textLabel, savedLayer.config.textLabel)
+      : newLayer.config.textLabel;
 
   // copy visConfig over to emptyLayer to make sure it has all the props
   const visConfig = newLayer.copyLayerConfig(
     newLayer.config.visConfig,
     savedLayer.config.visConfig || {},
-    {notToDeepMerge: ['colorRange', 'strokeColorRange']}
+    {shallowCopy: ['colorRange', 'strokeColorRange']}
   );
 
   newLayer.updateLayerConfig({
-    columns,
     visConfig,
-    textLabel,
-    ...foundVisualChannelConfigs
+    textLabel
   });
 
   return newLayer;
 }
 
-/**
- * Validate saved filter config with new data,
- * calculate domain and fieldIdx based new fields and data
- *
- * @param {Array<Object>} dataset.fields
- * @param {Array<Object>} dataset.allData
- * @param {Object} filter - filter to be validate
- * @return {Object | null} - validated filter
- */
-export function validateFilterWithData({fields, allData}, filter) {
-  // match filter.name to field.name
-  const fieldIdx = fields.findIndex(({name}) => name === filter.name);
-
-  if (fieldIdx < 0) {
-    // if can't find field with same name, discharge filter
-    return null;
-  }
-
-  const field = fields[fieldIdx];
-  const value = filter.value;
-
-  // return filter type, default value, fieldType and fieldDomain from field
-  const filterPropsFromField = getFilterProps(allData, field);
-
-  let matchedFilter = {
-    ...getDefaultFilter(filter.dataId),
-    ...filter,
-    ...filterPropsFromField,
-    freeze: true,
-    fieldIdx
-  };
-
-  const {yAxis} = matchedFilter;
-  if (yAxis) {
-    const matcheAxis = fields.find(
-      ({name, type}) => name === yAxis.name && type === yAxis.type
-    );
-
-    matchedFilter = matcheAxis
-      ? {
-          ...matchedFilter,
-          yAxis: matcheAxis,
-          ...getFilterPlot({...matchedFilter, yAxis: matcheAxis}, allData)
-        }
-      : matchedFilter;
-  }
-
-  matchedFilter.value = adjustValueToFilterDomain(value, matchedFilter);
-
-  if (matchedFilter.value === null) {
-    // cannt adjust saved value to filter
-    return null;
-  }
-
-  return matchedFilter;
+export function isValidMerger(merger) {
+  return isObject(merger) && typeof merger.merge === 'function' && typeof merger.prop === 'string';
 }
+
+export const VIS_STATE_MERGERS = [
+  {merge: mergeLayers, prop: 'layers', toMergeProp: 'layerToBeMerged'},
+  {merge: mergeFilters, prop: 'filters', toMergeProp: 'filterToBeMerged'},
+  {merge: mergeInteractions, prop: 'interactionConfig', toMergeProp: 'interactionToBeMerged'},
+  {merge: mergeLayerBlending, prop: 'layerBlending'},
+  {merge: mergeSplitMaps, prop: 'splitMaps', toMergeProp: 'splitMapsToBeMerged'},
+  {merge: mergeAnimationConfig, prop: 'animationConfig'}
+];

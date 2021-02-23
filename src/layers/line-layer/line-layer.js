@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -18,9 +18,11 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-import ArcLayer from '../arc-layer/arc-layer';
-import DeckGLLineLayer from 'deckgl-layers/line-layer/line-layer';
+import {BrushingExtension} from '@deck.gl/extensions';
+
 import LineLayerIcon from './line-layer-icon';
+import ArcLayer from '../arc-layer/arc-layer';
+import EnhancedLineLayer from 'deckgl-layers/line-layer/line-layer';
 
 export default class LineLayer extends ArcLayer {
   get type() {
@@ -31,9 +33,20 @@ export default class LineLayer extends ArcLayer {
     return LineLayerIcon;
   }
 
-  static findDefaultLayerProps({fieldPairs}) {
+  get visualChannels() {
+    const visualChannels = super.visualChannels;
+    return {
+      ...visualChannels,
+      sourceColor: {
+        ...visualChannels.sourceColor,
+        accessor: 'getColor'
+      }
+    };
+  }
+
+  static findDefaultLayerProps({fieldPairs = []}) {
     if (fieldPairs.length < 2) {
-      return [];
+      return {props: []};
     }
     const props = {};
 
@@ -44,80 +57,49 @@ export default class LineLayer extends ArcLayer {
       lat1: fieldPairs[1].pair.lat,
       lng1: fieldPairs[1].pair.lng
     };
-    props.label = `${fieldPairs[0].defaultName} -> ${
-      fieldPairs[1].defaultName
-      } line`;
+    props.label = `${fieldPairs[0].defaultName} -> ${fieldPairs[1].defaultName} line`;
 
-    return props;
+    return {props: [props]};
   }
 
-  renderLayer({
-    data,
-    idx,
-    layerInteraction,
-    objectHovered,
-    mapState,
-    interactionConfig
-  }) {
-    const {brush} = interactionConfig;
+  renderLayer(opts) {
+    const {data, gpuFilter, objectHovered, interactionConfig} = opts;
 
-    const colorUpdateTriggers = {
-      color: this.config.color,
-      colorField: this.config.colorField,
-      colorRange: this.config.visConfig.colorRange,
-      colorScale: this.config.colorScale,
-      targetColor: this.config.visConfig.targetColor
+    const layerProps = {
+      widthScale: this.config.visConfig.thickness
     };
 
-    const interaction = {
-      // auto highlighting
-      pickable: true,
-      autoHighlight: !brush.enabled,
-      highlightColor: this.config.highlightColor,
-
-      // brushing
-      brushRadius: brush.config.size * 1000,
-      brushSource: true,
-      brushTarget: true,
-      enableBrushing: brush.enabled
+    const updateTriggers = {
+      getPosition: this.config.columns,
+      getFilterValue: gpuFilter.filterValueUpdateTriggers,
+      ...this.getVisualChannelUpdateTriggers()
     };
+    const defaultLayerProps = this.getDefaultDeckLayerProps(opts);
+    const hoveredObject = this.hasHoveredObject(objectHovered);
 
     return [
       // base layer
-      new DeckGLLineLayer({
-        ...layerInteraction,
+      new EnhancedLineLayer({
+        ...defaultLayerProps,
+        ...this.getBrushingExtensionProps(interactionConfig, 'source_target'),
         ...data,
-        ...interaction,
-        getColor: data.getSourceColor,
-        id: this.id,
-        idx,
-        opacity: this.config.visConfig.opacity,
-        strokeScale: this.config.visConfig.thickness,
-        // parameters
-        parameters: {depthTest: mapState.dragRotate},
-        updateTriggers: {
-          getStrokeWidth: {
-            sizeField: this.config.sizeField,
-            sizeRange: this.config.visConfig.sizeRange
-          },
-          getColor: colorUpdateTriggers,
-          getTargetColor: colorUpdateTriggers
-        }
+        ...layerProps,
+        updateTriggers,
+        extensions: [...defaultLayerProps.extensions, new BrushingExtension()]
       }),
       // hover layer
-      ...(this.isLayerHovered(objectHovered)
-      ? [
-          new DeckGLLineLayer({
-            id: `${this.id}-hovered`,
-            data: [objectHovered.object],
-            strokeScale: this.config.visConfig.thickness,
-            getColor: this.config.highlightColor,
-            getTargetColor: this.config.highlightColor,
-            getStrokeWidth: data.getStrokeWidth,
-            pickable: false
-          })
-        ]
-      : [])
+      ...(hoveredObject
+        ? [
+            new EnhancedLineLayer({
+              ...this.getDefaultHoverLayerProps(),
+              ...layerProps,
+              data: [hoveredObject],
+              getColor: this.config.highlightColor,
+              getTargetColor: this.config.highlightColor,
+              getWidth: data.getWidth
+            })
+          ]
+        : [])
     ];
   }
 }

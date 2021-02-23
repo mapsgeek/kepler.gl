@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -78,12 +78,7 @@ class Features extends PureComponent {
       <div>
         <StaggeredScrollAnimation Container={FeaturesContainer}>
           {FEATURES.map(({title, description, image}, i) => (
-            <Feature
-              key={`feature-${i}`}
-              title={title}
-              description={description}
-              image={image}
-            />
+            <Feature key={`feature-${i}`} title={title} description={description} image={image} />
           ))}
         </StaggeredScrollAnimation>
         <CenteredContent>

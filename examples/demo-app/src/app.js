@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,43 +19,53 @@
 // THE SOFTWARE.
 
 import React, {Component} from 'react';
-import {findDOMNode} from 'react-dom';
 import AutoSizer from 'react-virtualized/dist/commonjs/AutoSizer';
 import styled, {ThemeProvider} from 'styled-components';
 import window from 'global/window';
 import {connect} from 'react-redux';
+
 import {theme} from 'kepler.gl/styles';
 import Banner from './components/banner';
-import Announcement from './components/announcement';
+import Announcement, {FormLink} from './components/announcement';
 import {replaceLoadDataModal} from './factories/load-data-modal';
-import {replaceSaveMap} from './factories/save-map';
-import ExportUrlModal from './components/sharing/export-url-modal';
+import {replaceMapControl} from './factories/map-control';
+import {replacePanelHeader} from './factories/panel-header';
 import {AUTH_TOKENS} from './constants/default-settings';
+import {messages} from './constants/localization';
+
 import {
-  exportFileToCloud,
   loadRemoteMap,
   loadSampleConfigurations,
-  setCloudLoginSuccess
+  onExportFileSuccess,
+  onLoadCloudMapSuccess
 } from './actions';
+
+import {loadCloudMap} from 'kepler.gl/actions';
+import {CLOUD_PROVIDERS} from './cloud-providers';
 
 const KeplerGl = require('kepler.gl/components').injectComponents([
   replaceLoadDataModal(),
-  replaceSaveMap()
+  replaceMapControl(),
+  replacePanelHeader()
 ]);
 
 // Sample data
 /* eslint-disable no-unused-vars */
-import sampleTripData from './data/sample-trip-data';
+import sampleTripData, {testCsvData, sampleTripDataConfig} from './data/sample-trip-data';
 import sampleGeojson from './data/sample-small-geojson';
 import sampleGeojsonPoints from './data/sample-geojson-points';
-import sampleH3Data from './data/sample-hex-id-csv';
+import sampleGeojsonConfig from './data/sample-geojson-config';
+import sampleH3Data, {config as h3MapConfig} from './data/sample-hex-id-csv';
+import sampleS2Data, {config as s2MapConfig, dataId as s2DataId} from './data/sample-s2-data';
+import sampleAnimateTrip from './data/sample-animate-trip-data';
 import sampleIconCsv, {config as savedMapConfig} from './data/sample-icon-csv';
 import {addDataToMap, addNotification} from 'kepler.gl/actions';
 import {processCsvData, processGeojson} from 'kepler.gl/processors';
 /* eslint-enable no-unused-vars */
 
-const BannerHeight = 30;
-const BannerKey = 'kgHideBanner-iiba';
+const BannerHeight = 48;
+const BannerKey = `banner-${FormLink}`;
+const keplerGlGetState = state => state.demo.keplerGl;
 
 const GlobalStyle = styled.div`
   font-family: ff-clan-web-pro, 'Helvetica Neue', Helvetica, sans-serif;
@@ -93,13 +103,22 @@ class App extends Component {
     height: window.innerHeight
   };
 
-  componentWillMount() {
+  componentDidMount() {
     // if we pass an id as part of the url
     // we ry to fetch along map configurations
-    const {
-      params: {id} = {},
-      location: {query = {}}
-    } = this.props;
+    const {params: {id, provider} = {}, location: {query = {}} = {}} = this.props;
+
+    const cloudProvider = CLOUD_PROVIDERS.find(c => c.name === provider);
+    if (cloudProvider) {
+      this.props.dispatch(
+        loadCloudMap({
+          loadParams: query,
+          provider: cloudProvider,
+          onSuccess: onLoadCloudMapSuccess
+        })
+      );
+      return;
+    }
 
     // Load sample using its id
     if (id) {
@@ -111,15 +130,14 @@ class App extends Component {
       // TODO?: validate map url
       this.props.dispatch(loadRemoteMap({dataUrl: query.mapUrl}));
     }
-  }
 
-  componentDidMount() {
     // delay zs to show the banner
     // if (!window.localStorage.getItem(BannerKey)) {
     //   window.setTimeout(this._showBanner, 3000);
     // }
     // load sample data
     // this._loadSampleData();
+
     // Notifications
     // this._loadMockNotifications();
   }
@@ -160,13 +178,16 @@ class App extends Component {
   }
 
   _loadSampleData() {
-    // this._loadTripData();
-    this._loadGeojsonData();
+    this._loadPointData();
+    // this._loadGeojsonData();
+    this._loadTripGeoJson();
     // this._loadIconData();
     // this._loadH3HexagonData();
+    // this._loadS2Data();
+    // this._loadScenegraphLayer();
   }
 
-  _loadTripData() {
+  _loadPointData() {
     this.props.dispatch(
       addDataToMap({
         datasets: {
@@ -180,17 +201,39 @@ class App extends Component {
           centerMap: true,
           readOnly: false
         },
+        config: sampleTripDataConfig
+      })
+    );
+  }
+
+  _loadScenegraphLayer() {
+    this.props.dispatch(
+      addDataToMap({
+        datasets: {
+          info: {
+            label: 'Sample Scenegraph Ducks',
+            id: 'test_trip_data'
+          },
+          data: processCsvData(testCsvData)
+        },
         config: {
-          visState: {
-            filters: [
-              {
-                id: 'me',
-                dataId: 'test_trip_data',
-                name: 'tpep_pickup_datetime',
-                type: 'timeRange',
-                enlarged: true
-              }
-            ]
+          version: 'v1',
+          config: {
+            visState: {
+              layers: [
+                {
+                  type: '3D',
+                  config: {
+                    dataId: 'test_trip_data',
+                    columns: {
+                      lat: 'gps_data.lat',
+                      lng: 'gps_data.lng'
+                    },
+                    isVisible: true
+                  }
+                }
+              ]
+            }
           }
         }
       })
@@ -214,20 +257,37 @@ class App extends Component {
     );
   }
 
+  _loadTripGeoJson() {
+    this.props.dispatch(
+      addDataToMap({
+        datasets: [
+          {
+            info: {label: 'Trip animation'},
+            data: processGeojson(sampleAnimateTrip)
+          }
+        ]
+      })
+    );
+  }
+
   _loadGeojsonData() {
     // load geojson
     this.props.dispatch(
       addDataToMap({
         datasets: [
           {
-            info: {label: 'Bart Stops Geo'},
+            info: {label: 'Bart Stops Geo', id: 'bart-stops-geo'},
             data: processGeojson(sampleGeojsonPoints)
           },
           {
-            info: {label: 'SF Zip Geo'},
+            info: {label: 'SF Zip Geo', id: 'sf-zip-geo'},
             data: processGeojson(sampleGeojson)
           }
-        ]
+        ],
+        options: {
+          keepExistingConfig: true
+        },
+        config: sampleGeojsonConfig
       })
     );
   }
@@ -244,15 +304,35 @@ class App extends Component {
             },
             data: processCsvData(sampleH3Data)
           }
-        ]
+        ],
+        config: h3MapConfig,
+        options: {
+          keepExistingConfig: true
+        }
       })
     );
   }
 
-  _isCloudStorageEnabled = () => {
-    const {app} = this.props.demo;
-    return app.featureFlags.cloudStorage;
-  };
+  _loadS2Data() {
+    // load s2
+    this.props.dispatch(
+      addDataToMap({
+        datasets: [
+          {
+            info: {
+              label: 'S2 Data',
+              id: s2DataId
+            },
+            data: processCsvData(sampleS2Data)
+          }
+        ],
+        config: s2MapConfig,
+        options: {
+          keepExistingConfig: true
+        }
+      })
+    );
+  }
 
   _toggleCloudModal = () => {
     // TODO: this lives only in the demo hence we use the state for now
@@ -260,14 +340,6 @@ class App extends Component {
     this.setState({
       cloudModalOpen: !this.state.cloudModalOpen
     });
-  };
-
-  _onExportToCloud = () => {
-    this.props.dispatch(exportFileToCloud());
-  };
-
-  _onCloudLoginSuccess = () => {
-    this.props.dispatch(setCloudLoginSuccess());
   };
 
   _getMapboxRef = (mapbox, index) => {
@@ -286,9 +358,6 @@ class App extends Component {
   };
 
   render() {
-    const {showBanner} = this.state;
-    const {sharing} = this.props.demo;
-    const rootNode = this.root;
     return (
       <ThemeProvider theme={theme}>
         <GlobalStyle
@@ -302,30 +371,19 @@ class App extends Component {
           <Banner
             show={this.state.showBanner}
             height={BannerHeight}
-            bgColor="#82368c"
+            bgColor="#2E7CF6"
             onClose={this._hideBanner}
           >
             <Announcement onDisable={this._disableBanner} />
           </Banner>
-          {this._isCloudStorageEnabled() && rootNode && (
-            <ExportUrlModal
-              sharing={sharing}
-              isOpen={Boolean(this.state.cloudModalOpen)}
-              onClose={this._toggleCloudModal}
-              onExport={this._onExportToCloud}
-              onCloudLoginSuccess={this._onCloudLoginSuccess}
-              // this is to apply the same modal style as kepler.gl core
-              parentSelector={() => findDOMNode(this.root)}
-            />
-          )}
           <div
             style={{
               transition: 'margin 1s, height 1s',
               position: 'absolute',
               width: '100%',
-              height: showBanner ? `calc(100% - ${BannerHeight}px)` : '100%',
-              minHeight: `calc(100% - ${BannerHeight}px)`,
-              marginTop: showBanner ? `${BannerHeight}px` : 0
+              height: '100%',
+              left: 0,
+              top: 0
             }}
           >
             <AutoSizer>
@@ -336,12 +394,13 @@ class App extends Component {
                   /*
                    * Specify path to keplerGl state, because it is not mount at the root
                    */
-                  getState={state => state.demo.keplerGl}
+                  getState={keplerGlGetState}
                   width={width}
-                  height={height - (showBanner ? BannerHeight : 0)}
-                  onSaveMap={
-                    this._isCloudStorageEnabled() && this._toggleCloudModal
-                  }
+                  height={height}
+                  cloudProviders={CLOUD_PROVIDERS}
+                  localeMessages={messages}
+                  onExportToCloudSuccess={onExportFileSuccess}
+                  onLoadCloudMapSuccess={onLoadCloudMapSuccess}
                 />
               )}
             </AutoSizer>
@@ -355,7 +414,4 @@ class App extends Component {
 const mapStateToProps = state => state;
 const dispatchToProps = dispatch => ({dispatch});
 
-export default connect(
-  mapStateToProps,
-  dispatchToProps
-)(App);
+export default connect(mapStateToProps, dispatchToProps)(App);

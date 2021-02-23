@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -28,8 +28,24 @@ import document from 'global/document';
 import console from 'global/console';
 import svgToMiniDataURI from 'mini-svg-data-uri';
 import {IMAGE_EXPORT_ERRORS} from 'constants/user-feedbacks';
+import {
+  canvasToBlob,
+  escape,
+  escapeXhtml,
+  delay,
+  processClone,
+  asArray,
+  makeImage,
+  mimeType,
+  dataAsUrl,
+  isDataUrl,
+  isSrcAsDataUrl,
+  resolveUrl,
+  getWidth,
+  getHeight,
+  getAndEncode
+} from './dom-utils';
 
-const util = newUtil();
 const inliner = newInliner();
 const fontFaces = newFontFaces();
 const images = newImages();
@@ -50,7 +66,6 @@ const domtoimage = {
   impl: {
     fontFaces,
     images,
-    util,
     inliner,
     options: {}
   }
@@ -59,16 +74,16 @@ const domtoimage = {
 /**
    * @param {Node} node - The DOM Node object to render
    * @param {Object} options - Rendering options
-   * @param {Function} options.filter - Should return true if passed node should be included in the output
+   * @param {Function} [options.filter] - Should return true if passed node should be included in the output
    *          (excluding node means excluding it's children as well). Not called on the root node.
-   * @param {String} options.bgcolor - color for the background, any valid CSS color value.
-   * @param {Number} options.width - width to be applied to node before rendering.
-   * @param {Number} options.height - height to be applied to node before rendering.
-   * @param {Object} options.style - an object whose properties to be copied to node's style before rendering.
-   * @param {Number} options.quality - a Number between 0 and 1 indicating image quality (applicable to JPEG only),
+   * @param {String} [options.bgcolor] - color for the background, any valid CSS color value.
+   * @param {Number} [options.width] - width to be applied to node before rendering.
+   * @param {Number} [options.height] - height to be applied to node before rendering.
+   * @param {Object} [options.style] - an object whose properties to be copied to node's style before rendering.
+   * @param {Number} [options.quality] - a Number between 0 and 1 indicating image quality (applicable to JPEG only),
               defaults to 1.0.
-    * @param {String} options.imagePlaceholder - dataURL to use as a placeholder for failed images, default behaviour is to fail fast on images we can't fetch
-    * @param {Boolean} options.cacheBust - set to true to cache bust by appending the time to the request url
+    * @param {String} [options.imagePlaceholder] - dataURL to use as a placeholder for failed images, default behaviour is to fail fast on images we can't fetch
+    * @param {Boolean} [options.cacheBust] - set to true to cache bust by appending the time to the request url
     * @return {Promise} - A promise that is fulfilled with a SVG image data URL
     * */
 function toSvg(node, options) {
@@ -80,11 +95,7 @@ function toSvg(node, options) {
     .then(inlineImages)
     .then(applyOptions)
     .then(clone =>
-      makeSvgDataUri(
-        clone,
-        options.width || util.width(node),
-        options.height || util.height(node)
-      )
+      makeSvgDataUri(clone, options.width || getWidth(node), options.height || getHeight(node))
     );
 
   function applyOptions(clone) {
@@ -94,7 +105,7 @@ function toSvg(node, options) {
     if (options.height) clone.style.height = `${options.height}px`;
 
     if (options.style)
-      Object.keys(options.style).forEach((property) => {
+      Object.keys(options.style).forEach(property => {
         clone.style[property] = options.style[property];
       });
 
@@ -108,10 +119,8 @@ function toSvg(node, options) {
  * @return {Promise} - A promise that is fulfilled with a Uint8Array containing RGBA pixel data.
  * */
 function toPixelData(node, options) {
-  return draw(node, options || {}).then(canvas =>
-    canvas
-      .getContext('2d')
-      .getImageData(0, 0, util.width(node), util.height(node)).data
+  return draw(node, options || {}).then(
+    canvas => canvas.getContext('2d').getImageData(0, 0, getWidth(node), getHeight(node)).data
   );
 }
 
@@ -140,14 +149,13 @@ function toJpeg(node, options) {
  * @return {Promise} - A promise that is fulfilled with a PNG image blob
  * */
 function toBlob(node, options) {
-  return draw(node, options || {}).then(util.canvasToBlob);
+  return draw(node, options || {}).then(canvasToBlob);
 }
 
 function copyOptions(options) {
   // Copy options to impl options for use in impl
   if (typeof options.imagePlaceholder === 'undefined') {
-    domtoimage.impl.options.imagePlaceholder =
-      defaultOptions.imagePlaceholder;
+    domtoimage.impl.options.imagePlaceholder = defaultOptions.imagePlaceholder;
   } else {
     domtoimage.impl.options.imagePlaceholder = options.imagePlaceholder;
   }
@@ -161,8 +169,8 @@ function copyOptions(options) {
 
 function draw(domNode, options) {
   return toSvg(domNode, options)
-    .then(util.makeImage)
-    .then(util.delay(100))
+    .then(makeImage)
+    .then(delay(100))
     .then(image => {
       const canvas = newCanvas(domNode);
       canvas.getContext('2d').drawImage(image, 0, 0);
@@ -171,8 +179,8 @@ function draw(domNode, options) {
 
   function newCanvas(dNode) {
     const canvas = document.createElement('canvas');
-    canvas.width = options.width || util.width(dNode);
-    canvas.height = options.height || util.height(dNode);
+    canvas.width = options.width || getWidth(dNode);
+    canvas.height = options.height || getHeight(dNode);
 
     if (options.bgcolor) {
       const ctx = canvas.getContext('2d');
@@ -196,9 +204,23 @@ function cloneNode(node, filter, root) {
 
   function makeNodeCopy(nd) {
     if (nd instanceof window.HTMLCanvasElement) {
-      return util.makeImage(nd.toDataURL());
+      return makeImage(nd.toDataURL());
     }
     return nd.cloneNode(false);
+  }
+
+  function cloneChildrenInOrder(parent, arrChildren, flt) {
+    let done = Promise.resolve();
+    arrChildren.forEach(child => {
+      done = done
+        .then(() => cloneNode(child, flt))
+        .then(childClone => {
+          if (childClone) {
+            parent.appendChild(childClone);
+          }
+        });
+    });
+    return done;
   }
 
   function cloneChildren(original, clone, flt) {
@@ -207,128 +229,12 @@ function cloneNode(node, filter, root) {
       return Promise.resolve(clone);
     }
 
-    return cloneChildrenInOrder(clone, util.asArray(children))
-    .then(() => clone);
-
-    function cloneChildrenInOrder(parent, arrChildren) {
-      let done = Promise.resolve();
-      arrChildren.forEach(child => {
-        done = done
-          .then(() => cloneNode(child, flt))
-          .then(childClone => {
-            if (childClone) parent.appendChild(childClone);
-          });
-      });
-      return done;
-    }
-  }
-
-  function processClone(original, clone) {
-    if (!(clone instanceof window.Element)) {
-      return clone
-    };
-
-    return Promise.resolve()
-      .then(cloneStyle)
-      .then(clonePseudoElements)
-      .then(copyUserInput)
-      .then(fixSvg)
-      .then(() => clone);
-
-    function cloneStyle() {
-      const originalStyle = window.getComputedStyle(original);
-      copyStyle(originalStyle, clone.style);
-      function copyStyle(source, target) {
-        if (source.cssText) {
-          target.cssText = source.cssText;
-          // add additional copy of composite styles
-          if (source.font) {
-            target.font = source.font;
-          }
-        } else {
-          copyProperties(source, target);
-        }
-        function copyProperties(sourceStyle, targetStyle) {
-          const propertyKeys = util.asArray(sourceStyle);
-          propertyKeys.forEach(name => {
-            targetStyle.setProperty(
-              name,
-              sourceStyle.getPropertyValue(name),
-              sourceStyle.getPropertyPriority(name)
-            );
-          });
-        }
-      }
-    }
-
-    function clonePseudoElements() {
-      [':before', ':after'].forEach(element => clonePseudoElement(element));
-
-      function clonePseudoElement(element) {
-        const style = window.getComputedStyle(original, element);
-        const content = style.getPropertyValue('content');
-
-        if (content === '' || content === 'none') {
-          return;
-        }
-
-        const className = util.uid();
-        clone.className = `${clone.className} ${className}`;
-        const styleElement = document.createElement('style');
-        styleElement.appendChild(
-          formatPseudoElementStyle(className, element, style)
-        );
-        clone.appendChild(styleElement);
-
-        function formatPseudoElementStyle(cln, elm, stl) {
-          const selector = `.${cln}:${elm}`;
-          const cssText = stl.cssText
-            ? formatCssText(stl)
-            : formatCssProperties(stl);
-          return document.createTextNode(`${selector}{${cssText}}`);
-
-          function formatCssText(stl1) {
-            const cnt = stl1.getPropertyValue('content');
-            return `${stl.cssText} content: ${cnt};`;
-          }
-
-          function formatCssProperties(stl2) {
-            return `${util.asArray(stl2).map(formatProperty).join('; ')};`;
-
-            function formatProperty(name) {
-              return (
-                `${name}:${stl.getPropertyValue(name)}${stl.getPropertyPriority(name) ? ' !important' : ''}`
-              );
-            }
-          }
-        }
-      }
-    }
-
-    function copyUserInput() {
-      if (original instanceof window.HTMLTextAreaElement)
-        clone.innerHTML = original.value;
-      if (original instanceof window.HTMLInputElement)
-        clone.setAttribute('value', original.value);
-    }
-
-    function fixSvg() {
-      if (!(clone instanceof window.SVGElement)) return;
-      clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-
-      if (!(clone instanceof window.SVGRectElement)) return;
-      ['width', 'height'].forEach(attribute => {
-        const value = clone.getAttribute(attribute);
-        if (!value) return;
-
-        clone.style.setProperty(attribute, value);
-      });
-    }
+    return cloneChildrenInOrder(clone, asArray(children), flt).then(() => clone);
   }
 }
 
 function embedFonts(node) {
-  return fontFaces.resolveAll().then((cssText) => {
+  return fontFaces.resolveAll().then(cssText => {
     const styleNode = document.createElement('style');
     node.appendChild(styleNode);
     styleNode.appendChild(document.createTextNode(cssText));
@@ -341,259 +247,20 @@ function inlineImages(node) {
 }
 
 function makeSvgDataUri(node, width, height) {
-  return Promise.resolve(node)
-    .then(nd => {
-      nd.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
-      const serializedString =  new window.XMLSerializer().serializeToString(nd);
+  return Promise.resolve(node).then(nd => {
+    nd.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+    const serializedString = new window.XMLSerializer().serializeToString(nd);
 
-      const xhtml = util.escapeXhtml(serializedString);
-      const foreignObject = `<foreignObject x="0" y="0" width="100%" height="100%">${xhtml}</foreignObject>`;
-      const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${foreignObject}</svg>`;
+    const xhtml = escapeXhtml(serializedString);
+    const foreignObject = `<foreignObject x="0" y="0" width="100%" height="100%">${xhtml}</foreignObject>`;
+    const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${foreignObject}</svg>`;
 
-      // Optimizing SVGs in data URIs
-      // see https://codepen.io/tigt/post/optimizing-svgs-in-data-uris
-      // the best way of encoding SVG in a data: URI is data:image/svg+xml,[actual data].
-      // We don’t need the ;charset=utf-8 parameter because the given SVG is ASCII.
-      return svgToMiniDataURI(svgStr);
-    });
-}
-
-function newUtil() {
-  return {
-    escape,
-    parseExtension,
-    mimeType,
-    dataAsUrl,
-    isDataUrl,
-    isSrcAsDataUrl,
-    canvasToBlob,
-    resolveUrl,
-    getAndEncode,
-    uid: uid(),
-    delay,
-    asArray,
-    escapeXhtml,
-    makeImage,
-    width,
-    height
-  };
-
-  function mimes() {
-    /*
-    * Only WOFF and EOT mime types for fonts are 'real'
-    * see http://www.iana.org/assignments/media-types/media-types.xhtml
-    */
-    const WOFF = 'application/font-woff';
-    const JPEG = 'image/jpeg';
-
-    return {
-      woff: WOFF,
-      woff2: WOFF,
-      ttf: 'application/font-truetype',
-      eot: 'application/vnd.ms-fontobject',
-      png: 'image/png',
-      jpg: JPEG,
-      jpeg: JPEG,
-      gif: 'image/gif',
-      tiff: 'image/tiff',
-      svg: 'image/svg+xml'
-    };
-  }
-
-  function parseExtension(url) {
-    const match = /\.([^\.\/]*?)$/g.exec(url);
-    if (match) {
-      return match[1];
-    }
-    return '';
-  }
-
-  function mimeType(url) {
-    const extension = parseExtension(url).toLowerCase();
-    return mimes()[extension] || '';
-  }
-
-  function isDataUrl(url) {
-    return url.search(/^(data:)/) !== -1;
-  }
-
-  function isSrcAsDataUrl(text) {
-    const DATA_URL_REGEX = /url\(['"]?(data:)([^'"]+?)['"]?\)/;
-
-    return text.search(DATA_URL_REGEX) !== -1;
-  }
-  function cvToBlob(canvas) {
-    return new Promise(resolve => {
-      const binaryString = window.atob(canvas.toDataURL().split(',')[1]);
-      const length = binaryString.length;
-      const binaryArray = new Uint8Array(length);
-
-      for (let i = 0; i < length; i++)
-        binaryArray[i] = binaryString.charCodeAt(i);
-
-      resolve(
-        new window.Blob([binaryArray], {type: 'image/png'})
-      );
-    });
-  }
-
-  function canvasToBlob(canvas) {
-    if (canvas.toBlob)
-      return new Promise(resolve => {
-        canvas.toBlob(resolve);
-      });
-
-    return cvToBlob(canvas);
-  }
-
-  function resolveUrl(url, baseUrl) {
-    const doc = document.implementation.createHTMLDocument();
-    const base = doc.createElement('base');
-    doc.head.appendChild(base);
-    const a = doc.createElement('a');
-    doc.body.appendChild(a);
-    base.href = baseUrl;
-    a.href = url;
-    return a.href;
-  }
-
-  function fourRandomChars() {
-    /* see http://stackoverflow.com/a/6248722/2519373 */
-    return `0000${((Math.random() * Math.pow(36, 4)) << 0).toString(36)}`.slice(-4);
-  }
-
-  function uid() {
-    let index = 0;
-
-    return () => `u${fourRandomChars()}${index++}`;
-  }
-
-  function makeImage(uri) {
-    return new Promise((resolve, reject) => {
-      const image = new window.Image();
-      image.onload = () => {
-        resolve(image);
-      };
-      image.onerror = (err) => {
-        const message = IMAGE_EXPORT_ERRORS.dataUri;
-        console.log(uri);
-        // error is an Event Object
-        // https://www.w3schools.com/jsref/obj_event.asp
-        reject({event: err, message});
-      };
-      image.src = uri;
-    });
-  }
-
-  function getAndEncode(url) {
-    const TIMEOUT = 30000;
-    if (domtoimage.impl.options.cacheBust) {
-      // Cache bypass so we dont have CORS issues with cached images
-      // Source: https://developer.mozilla.org/en/docs/Web/API/XMLHttpRequest/Using_XMLHttpRequest#Bypassing_the_cache
-      url += (/\?/.test(url) ? '&' : '?') + new Date().getTime();
-    }
-
-    return new Promise(resolve => {
-      const request = new window.XMLHttpRequest();
-
-      request.onreadystatechange = done;
-      request.ontimeout = timeout;
-      request.responseType = 'blob';
-      request.timeout = TIMEOUT;
-      request.open('GET', url, true);
-      request.send();
-
-      let placeholder;
-      if (domtoimage.impl.options.imagePlaceholder) {
-        const split = domtoimage.impl.options.imagePlaceholder.split(/,/);
-        if (split && split[1]) {
-          placeholder = split[1];
-        }
-      }
-
-      function done() {
-        if (request.readyState !== 4) return;
-
-        if (request.status !== 200) {
-          if (placeholder) {
-            resolve(placeholder);
-          } else {
-            fail(`cannot fetch resource: ${url}, status: ${request.status}`);
-          }
-
-          return;
-        }
-
-        const encoder = new window.FileReader();
-        encoder.onloadend = () => {
-          const content = encoder.result.split(/,/)[1];
-          resolve(content);
-        };
-        encoder.readAsDataURL(request.response);
-      }
-
-      function timeout() {
-        if (placeholder) {
-          resolve(placeholder);
-        } else {
-          fail(
-            `timeout of ${TIMEOUT}ms occurred while fetching resource: ${url}`
-          );
-        }
-      }
-
-      function fail(message) {
-        console.error(message);
-        resolve('');
-      }
-    });
-  }
-
-  function dataAsUrl(content, type) {
-    return `data:${type};base64,${content}`;
-  }
-
-  function escape(string) {
-    return string.replace(/([.*+?^${}()|\[\]\/\\])/g, '\\$1');
-  }
-
-  function delay(ms) {
-    return arg => {
-      return new Promise((resolve) => {
-        window.setTimeout(() => {
-          resolve(arg);
-        }, ms);
-      });
-    };
-  }
-
-  function asArray(arrayLike) {
-    const array = [];
-    const length = arrayLike.length;
-    for (let i = 0; i < length; i++) array.push(arrayLike[i]);
-    return array;
-  }
-
-  function escapeXhtml(string) {
-    return string.replace(/#/g, '%23').replace(/\n/g, '%0A');
-  }
-
-  function width(node) {
-    const leftBorder = px(node, 'border-left-width');
-    const rightBorder = px(node, 'border-right-width');
-    return node.scrollWidth + leftBorder + rightBorder;
-  }
-
-  function height(node) {
-    const topBorder = px(node, 'border-top-width');
-    const bottomBorder = px(node, 'border-bottom-width');
-    return node.scrollHeight + topBorder + bottomBorder;
-  }
-
-  function px(node, styleProperty) {
-    const value = window.getComputedStyle(node).getPropertyValue(styleProperty);
-    return parseFloat(value.replace('px', ''));
-  }
+    // Optimizing SVGs in data URIs
+    // see https://codepen.io/tigt/post/optimizing-svgs-in-data-uris
+    // the best way of encoding SVG in a data: URI is data:image/svg+xml,[actual data].
+    // We don’t need the ;charset=utf-8 parameter because the given SVG is ASCII.
+    return svgToMiniDataURI(svgStr);
+  });
 }
 
 function newInliner() {
@@ -618,28 +285,25 @@ function newInliner() {
     while ((match = URL_REGEX.exec(string)) !== null) {
       result.push(match[1]);
     }
-    return result.filter((url) => {
-      return !util.isDataUrl(url);
+    return result.filter(url => {
+      return !isDataUrl(url);
     });
+  }
+
+  function urlAsRegex(url0) {
+    return new RegExp(`(url\\([\'"]?)(${escape(url0)})([\'"]?\\))`, 'g');
   }
 
   function inline(string, url, baseUrl, get) {
     return Promise.resolve(url)
-      .then(ul => baseUrl ? util.resolveUrl(ul, baseUrl) : ul)
-      .then(get || util.getAndEncode)
-      .then(data => util.dataAsUrl(data, util.mimeType(url)))
+      .then(ul => (baseUrl ? resolveUrl(ul, baseUrl) : ul))
+      .then(ul => (typeof get === 'function' ? get(ul) : getAndEncode(ul, domtoimage.impl.options)))
+      .then(data => dataAsUrl(data, mimeType(url)))
       .then(dataUrl => string.replace(urlAsRegex(url), `$1${dataUrl}$3`));
-
-    function urlAsRegex(url0) {
-      return new RegExp(
-        `(url\\([\'"]?)(${util.escape(url0)})([\'"]?\\))`,
-        'g'
-      );
-    }
   }
 
   function inlineAll(string, baseUrl, get) {
-    if (nothingToInline() || util.isSrcAsDataUrl(string)) {
+    if (!shouldProcess(string) || isSrcAsDataUrl(string)) {
       return Promise.resolve(string);
     }
     return Promise.resolve(string)
@@ -651,10 +315,6 @@ function newInliner() {
         });
         return done;
       });
-
-    function nothingToInline() {
-      return !shouldProcess(string);
-    }
   }
 }
 
@@ -665,17 +325,15 @@ function newFontFaces() {
   };
 
   function resolveAll() {
-    return readAll(document)
+    return readAll()
       .then(webFonts => {
-        return Promise.all(
-          webFonts.map(webFont => webFont.resolve())
-        );
+        return Promise.all(webFonts.map(webFont => webFont.resolve()));
       })
       .then(cssStrings => cssStrings.join('\n'));
   }
 
   function readAll() {
-    return Promise.resolve(util.asArray(document.styleSheets))
+    return Promise.resolve(asArray(document.styleSheets))
       .then(loadExternalStyleSheets)
       .then(getCssRules)
       .then(selectWebFontRules)
@@ -694,8 +352,9 @@ function newFontFaces() {
             // cloudfont doesn't have allow origin header properly set
             // error response will remain in cache
             const cache = sheet.href.includes('uber-fonts') ? 'no-cache' : 'default';
-            return window.fetch(sheet.href, {credentials: 'omit', cache})
-              .then(toText)
+            return window
+              .fetch(sheet.href, {credentials: 'omit', cache})
+              .then(response => response.text())
               .then(setBaseHref(sheet.href))
               .then(toStyleSheet)
               .catch(err => {
@@ -711,20 +370,10 @@ function newFontFaces() {
         })
       );
 
-      function toText(response) {
-        return response.text();
-      }
-
       function setBaseHref(base) {
         base = base.split('/');
         base.pop();
         base = base.join('/');
-
-        return text => {
-          return util.isSrcAsDataUrl(text)
-            ? text
-            : text.replace(/url\(['"]?([^'"]+?)['"]?\)/g, addBaseHrefToUrl);
-        };
 
         function addBaseHrefToUrl(match, p1) {
           const url = /^http/i.test(p1) ? p1 : concatAndResolveUrl(base, p1);
@@ -752,6 +401,12 @@ function newFontFaces() {
           }
           return url3.join('/');
         }
+
+        return text => {
+          return isSrcAsDataUrl(text)
+            ? text
+            : text.replace(/url\(['"]?([^'"]+?)['"]?\)/g, addBaseHrefToUrl);
+        };
       }
 
       function toStyleSheet(text) {
@@ -767,7 +422,7 @@ function newFontFaces() {
 
     function getCssRules(styleSheets) {
       const cssRules = [];
-      styleSheets.forEach((sheet) => {
+      styleSheets.forEach(sheet => {
         // try...catch because browser may not able to enumerate rules for cross-domain sheets
         if (!sheet) {
           return;
@@ -782,9 +437,7 @@ function newFontFaces() {
 
         if (rules && typeof rules === 'object') {
           try {
-            util
-              .asArray(rules || [])
-              .forEach(cssRules.push.bind(cssRules));
+            asArray(rules || []).forEach(cssRules.push.bind(cssRules));
           } catch (e) {
             console.log(`Error while reading CSS rules from ${sheet.href}`, e);
             return;
@@ -819,25 +472,28 @@ function newImages() {
   };
 
   function newImage(element) {
-    return {
-      inline
-    };
-
     function inline(get) {
-      if (util.isDataUrl(element.src)) {
+      if (element.src) {
         return Promise.resolve();
       }
       return Promise.resolve(element.src)
-        .then(get || util.getAndEncode)
-        .then(data => util.dataAsUrl(data, util.mimeType(element.src)))
-        .then(dataUrl =>
-          new Promise((resolve, reject) => {
-            element.onload = resolve;
-            element.onerror = reject;
-            element.src = dataUrl;
-          })
+        .then(ul =>
+          typeof get === 'function' ? get(ul) : getAndEncode(ul, domtoimage.impl.options)
+        )
+        .then(data => dataAsUrl(data, mimeType(element.src)))
+        .then(
+          dataUrl =>
+            new Promise((resolve, reject) => {
+              element.onload = resolve;
+              element.onerror = reject;
+              element.src = dataUrl;
+            })
         );
     }
+
+    return {
+      inline
+    };
   }
 
   function inlineAll(node) {
@@ -849,9 +505,7 @@ function newImages() {
       if (node instanceof HTMLImageElement) {
         return newImage(node).inline();
       }
-      return Promise.all(
-        util.asArray(node.childNodes).map(child => inlineAll(child))
-      );
+      return Promise.all(asArray(node.childNodes).map(child => inlineAll(child)));
     });
 
     function inlineBackground(nd) {
@@ -864,11 +518,7 @@ function newImages() {
       return inliner
         .inlineAll(background)
         .then(inlined => {
-          nd.style.setProperty(
-            'background',
-            inlined,
-            nd.style.getPropertyPriority('background')
-          );
+          nd.style.setProperty('background', inlined, nd.style.getPropertyPriority('background'));
         })
         .then(() => nd);
     }

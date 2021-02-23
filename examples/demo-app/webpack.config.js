@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -32,30 +32,19 @@ const CONFIG = {
     app: resolve('./src/main.js')
   },
   output: {
-    path: resolve(__dirname, "build"),
-    filename: "bundle.js",
-    publicPath: "/"
+    path: resolve(__dirname, 'build'),
+    filename: 'bundle.js',
+    publicPath: '/'
   },
 
   devtool: 'source-map',
-
-  resolve: {
-    // Make src files outside of this dir resolve modules in our node_modules folder
-    modules: [resolve(__dirname, '.'), resolve(__dirname, 'node_modules'), 'node_modules']
-  },
 
   module: {
     rules: [
       {
         test: /\.js$/,
         loader: 'babel-loader',
-        include: join(__dirname, 'src'),
-        exclude: [/node_modules/]
-      },
-      {
-        // The example has some JSON data
-        test: /\.json$/,
-        loader: 'json-loader',
+        include: [join(__dirname, 'src')],
         exclude: [/node_modules/]
       }
     ]
@@ -75,7 +64,8 @@ const CONFIG = {
     new webpack.EnvironmentPlugin([
       'MapboxAccessToken',
       'DropboxClientId',
-      'MapboxExportToken'
+      'MapboxExportToken',
+      'CartoClientId'
     ])
   ]
 };

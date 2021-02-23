@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,6 +24,7 @@ import {isValidFilterValue} from 'utils/filter-utils';
 import {LAYER_VIS_CONFIGS} from 'layers/layer-factory';
 import Schema from './schema';
 import cloneDeep from 'lodash.clonedeep';
+import {notNullorUndefined} from 'utils/data-utils';
 
 /**
  * V0 Schema
@@ -70,10 +71,7 @@ class DimensionFieldSchemaV0 extends Schema {
   save(field) {
     // should not be called anymore
     return {
-      [this.key]:
-        field !== null
-          ? this.savePropertiesOrApplySchema(field)[this.key]
-          : null
+      [this.key]: field !== null ? this.savePropertiesOrApplySchema(field)[this.key] : null
     };
   }
 
@@ -236,6 +234,7 @@ export const layerPropsV0 = {
   label: new LayerConfigSchemaV0({key: 'label'}),
   color: new LayerConfigSchemaV0({key: 'color'}),
   isVisible: new LayerConfigSchemaV0({key: 'isVisible'}),
+  hidden: new LayerConfigSchemaV0({key: 'hidden'}),
 
   // convert visConfig
   visConfig: new LayerVisConfigSchemaV0({key: 'visConfig'}),
@@ -310,33 +309,12 @@ class TextLabelSchemaV1 extends Schema {
 }
 
 const visualChannelModificationV1 = {
-  point: (vc, parents, accumulator) => {
-    const [layer] = parents.slice(-1);
-
-    if (
-      layer.config.visConfig.outline &&
-      vc.colorField &&
-      !vc.hasOwnProperty('strokeColorField')
-    ) {
-      // point layer now supports both outline and fill
-      // for older schema where filled has not been added to point layer
-      // copy colorField, colorScale to strokeColorField, and strokeColorScale
-      return {
-        strokeColorField: vc.colorField,
-        strokeColorScale: vc.colorScale,
-        colorField: null,
-        colorScale: 'quantile'
-      };
-    }
-    return {};
-  },
   geojson: (vc, parents, accumulator) => {
     const [layer] = parents.slice(-1);
     const isOld = !vc.hasOwnProperty('strokeColorField');
     // make our best guess if this geojson layer contains point
     const isPoint =
-      vc.radiusField ||
-      layer.config.visConfig.radius !== LAYER_VIS_CONFIGS.radius.defaultValue;
+      vc.radiusField || layer.config.visConfig.radius !== LAYER_VIS_CONFIGS.radius.defaultValue;
 
     if (isOld && !isPoint && layer.config.visConfig.stroked) {
       // if stroked is true, copy color config to stroke color config
@@ -390,8 +368,8 @@ const visConfigModificationV1 = {
   point: (visConfig, parents, accumulated) => {
     const modified = {};
     const [layer] = parents.slice(-2, -1);
-    const isOld = !visConfig.hasOwnProperty('filled') &&
-    !visConfig.strokeColor && !visConfig.strokeColorRange;
+    const isOld =
+      !visConfig.hasOwnProperty('filled') && !visConfig.strokeColor && !visConfig.strokeColorRange;
     if (isOld) {
       // color color & color range to stroke color
       modified.strokeColor = layer.config.color;
@@ -410,12 +388,15 @@ const visConfigModificationV1 = {
     // is points?
     const modified = {};
     const [layer] = parents.slice(-2, -1);
-    const isOld = !layer.visualChannels.hasOwnProperty('strokeColorField') &&
-      !visConfig.strokeColor && !visConfig.strokeColorRange;
+    const isOld =
+      layer.visualChannels &&
+      !layer.visualChannels.hasOwnProperty('strokeColorField') &&
+      !visConfig.strokeColor &&
+      !visConfig.strokeColorRange;
     // make our best guess if this geojson layer contains point
     const isPoint =
-      layer.visualChannels.radiusField ||
-      visConfig.radius !== LAYER_VIS_CONFIGS.radius.defaultValue;
+      (layer.visualChannels && layer.visualChannels.radiusField) ||
+      (visConfig && visConfig.radius !== LAYER_VIS_CONFIGS.radius.defaultValue);
 
     if (isOld) {
       // color color & color range to stroke color
@@ -468,6 +449,7 @@ export const layerPropsV1 = {
       visConfig: new VisConfigSchemaV1({
         version: VERSIONS.v1
       }),
+      hidden: null,
       textLabel: new TextLabelSchemaV1({
         version: VERSIONS.v1,
         key: 'textLabel'
@@ -480,7 +462,7 @@ export const layerPropsV1 = {
   })
 };
 
-class LayerSchemaV0 extends Schema {
+export class LayerSchemaV0 extends Schema {
   key = 'layers';
 
   save(layers, parents) {
@@ -500,14 +482,12 @@ class LayerSchemaV0 extends Schema {
 
   load(layers) {
     return {
-      [this.key]: layers.map(
-        layer => this.loadPropertiesOrApplySchema(layer, layers).layers
-      )
+      [this.key]: layers.map(layer => this.loadPropertiesOrApplySchema(layer, layers).layers)
     };
   }
 }
 
-class FilterSchemaV0 extends Schema {
+export class FilterSchemaV0 extends Schema {
   key = 'filters';
   save(filters) {
     return {
@@ -527,58 +507,85 @@ class InteractionSchemaV0 extends Schema {
   key = 'interactionConfig';
 
   save(interactionConfig) {
-    return {
-      [this.key]: this.properties.reduce(
-        (accu, key) => ({
-          ...accu,
-          ...(interactionConfig[key].enabled
-            ? {[key]: interactionConfig[key].config}
-            : {})
-        }),
-        {}
-      )
-    };
+    return Array.isArray(this.properties)
+      ? {
+          [this.key]: this.properties.reduce(
+            (accu, key) => ({
+              ...accu,
+              ...(interactionConfig[key].enabled ? {[key]: interactionConfig[key].config} : {})
+            }),
+            {}
+          )
+        }
+      : {};
   }
   load(interactionConfig) {
     // convert v0 -> v1
     // return enabled: false if disabled,
-    return {
-      [this.key]: this.properties.reduce(
-        (accu, key) => ({
-          ...accu,
-          ...{
-            [key]: {
-              ...(interactionConfig[key] || {}),
-              enabled: Boolean(interactionConfig[key])
-            }
-          }
-        }),
-        {}
-      )
-    };
+    return Array.isArray(this.properties)
+      ? {
+          [this.key]: this.properties.reduce(
+            (accu, key) => ({
+              ...accu,
+              ...{
+                [key]: {
+                  ...(interactionConfig[key] || {}),
+                  enabled: Boolean(interactionConfig[key])
+                }
+              }
+            }),
+            {}
+          )
+        }
+      : {};
   }
 }
 
-class InteractionSchemaV1 extends Schema {
+const interactionPropsV1 = [...interactionPropsV0, 'geocoder', 'coordinate'];
+
+export class InteractionSchemaV1 extends Schema {
   key = 'interactionConfig';
 
   save(interactionConfig) {
     // save config even if disabled,
-    return {
-      [this.key]: this.properties.reduce(
-        (accu, key) => ({
-          ...accu,
-          [key]: {
-            ...interactionConfig[key].config,
-            enabled: interactionConfig[key].enabled
-          }
-        }),
-        {}
-      )
-    };
+    return Array.isArray(this.properties)
+      ? {
+          [this.key]: this.properties.reduce(
+            (accu, key) => ({
+              ...accu,
+              [key]: {
+                ...interactionConfig[key].config,
+                enabled: interactionConfig[key].enabled
+              }
+            }),
+            {}
+          )
+        }
+      : {};
   }
   load(interactionConfig) {
-    return {[this.key]: interactionConfig};
+    const modifiedConfig = interactionConfig;
+    Object.keys(interactionConfig).forEach(configType => {
+      if (configType === 'tooltip') {
+        const fieldsToShow = modifiedConfig[configType].fieldsToShow;
+        if (!notNullorUndefined(fieldsToShow)) {
+          return {[this.key]: modifiedConfig};
+        }
+        Object.keys(fieldsToShow).forEach(key => {
+          fieldsToShow[key] = fieldsToShow[key].map(fieldData => {
+            if (!fieldData.name) {
+              return {
+                name: fieldData,
+                format: null
+              };
+            }
+            return fieldData;
+          });
+        });
+      }
+      return;
+    });
+    return {[this.key]: modifiedConfig};
   }
 }
 
@@ -594,9 +601,7 @@ export const filterPropsV0 = {
 export class DimensionFieldSchema extends Schema {
   save(field) {
     return {
-      [this.key]: field
-        ? this.savePropertiesOrApplySchema(field)[this.key]
-        : null
+      [this.key]: field ? this.savePropertiesOrApplySchema(field)[this.key] : null
     };
   }
 
@@ -605,9 +610,42 @@ export class DimensionFieldSchema extends Schema {
   }
 }
 
+export class SplitMapsSchema extends Schema {
+  convertLayerSettings(accu, [key, value]) {
+    if (typeof value === 'boolean') {
+      return {
+        ...accu,
+        [key]: value
+      };
+    } else if (value && typeof value === 'object' && value.isAvailable) {
+      return {
+        ...accu,
+        [key]: Boolean(value.isVisible)
+      };
+    }
+    return accu;
+  }
+
+  load(splitMaps) {
+    // previous splitMaps Schema {layers: {layerId: {isVisible, isAvailable}}}
+
+    if (!Array.isArray(splitMaps) || !splitMaps.length) {
+      return {splitMaps: []};
+    }
+
+    return {
+      splitMaps: splitMaps.map(settings => ({
+        ...settings,
+        layers: Object.entries(settings.layers || {}).reduce(this.convertLayerSettings, {})
+      }))
+    };
+  }
+}
+
 export const filterPropsV1 = {
   ...filterPropsV0,
   plotType: null,
+  animationWindow: null,
   yAxis: new DimensionFieldSchema({
     version: VERSIONS.v1,
     key: 'yAxis',
@@ -615,7 +653,11 @@ export const filterPropsV1 = {
       name: null,
       type: null
     }
-  })
+  }),
+
+  // polygon filter properties
+  layerId: null,
+  speed: null
 };
 
 export const propertiesV0 = {
@@ -645,10 +687,21 @@ export const propertiesV1 = {
   }),
   interactionConfig: new InteractionSchemaV1({
     version: VERSIONS.v1,
-    properties: interactionPropsV0
+    properties: interactionPropsV1
   }),
   layerBlending: null,
-  splitMaps: null
+  splitMaps: new SplitMapsSchema({
+    key: 'splitMaps',
+    version: VERSIONS.v1
+  }),
+  animationConfig: new Schema({
+    version: VERSIONS.v1,
+    properties: {
+      currentTime: null,
+      speed: null
+    },
+    key: 'animationConfig'
+  })
 };
 
 export const visStateSchemaV0 = new Schema({
@@ -666,8 +719,7 @@ export const visStateSchemaV1 = new Schema({
 export const visStateSchema = {
   [VERSIONS.v0]: {
     save: toSave => visStateSchemaV0.save(toSave),
-    load: toLoad =>
-      visStateSchemaV1.load(visStateSchemaV0.load(toLoad).visState)
+    load: toLoad => visStateSchemaV1.load(visStateSchemaV0.load(toLoad).visState)
   },
   [VERSIONS.v1]: visStateSchemaV1
 };

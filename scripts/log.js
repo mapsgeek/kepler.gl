@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-import console from 'global/console';
+const console = require('global/console');
 
 const Colors = {
   Reset: '\x1b[0m',
@@ -54,8 +54,10 @@ function log(color) {
   };
 }
 
-export const logSuccess = log(Colors.FgGreen);
-export const logOk = log(Colors.FgCyan);
-export const logError = log(Colors.FgRed);
-export const logProgress = log(Colors.FgBlue);
-export const logStep = log(Colors.FgMagenta);
+module.exports = {
+  logSuccess: log(Colors.FgGreen),
+  logOk: log(Colors.FgCyan),
+  logError: log(Colors.FgRed),
+  logProgress: log(Colors.FgBlue),
+  logStep: log(Colors.FgMagenta),
+}

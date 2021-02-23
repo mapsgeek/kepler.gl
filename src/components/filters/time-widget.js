@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,39 +22,30 @@ import React, {Component} from 'react';
 import styled from 'styled-components';
 import {createSelector} from 'reselect';
 
-import FieldSelector from 'components/common/field-selector';
-import {Button, SelectTextBold, IconRoundSmall, CenterFlexbox} from 'components/common/styled-components';
-import TimeRangeFilter from 'components/filters/time-range-filter';
-import {Close, Clock, LineChart, Rocket} from 'components/common/icons';
-import AnimationSpeedToggle from './animation-speed-toggle';
+import {
+  SelectTextBold,
+  IconRoundSmall,
+  CenterFlexbox,
+  BottomWidgetInner
+} from 'components/common/styled-components';
+import {Close, Clock, LineChart} from 'components/common/icons';
+import SpeedControlFactory from 'components/common/animation-control/speed-control';
+import TimeRangeSliderFactory from 'components/common/time-range-slider';
 
-const innerPdSide = 32;
+import FloatingTimeDisplayFactory from 'components/common/animation-control/floating-time-display';
+import FieldSelectorFactory from '../common/field-selector';
 
-const WidgetContainer = styled.div`
-  position: absolute;
-  padding-top: ${props => props.theme.sidePanel.margin.top}px;
-  padding-right: ${props => props.theme.sidePanel.margin.right}px;
-  padding-bottom: ${props => props.theme.sidePanel.margin.bottom}px;
-  padding-left: ${props => props.theme.sidePanel.margin.left}px;
-  bottom: 0;
-  right: 0;
-  z-index: 1;
-  width: ${props => props.width}px;
+const TOP_SECTION_HEIGHT = '36px';
 
-  .bottom-widget--inner {
-    background-color: ${props => props.theme.sidePanelBg};
-    padding: 6px ${innerPdSide}px 10px ${innerPdSide}px;
-    position: relative;
-  }
+const TimeBottomWidgetInner = styled(BottomWidgetInner)`
+  padding: 6px 32px 24px 32px;
 `;
-
 const TopSectionWrapper = styled.div`
-  position: absolute;
   display: flex;
   justify-content: space-between;
   width: 100%;
-  padding-right: ${innerPdSide * 2}px;
   color: ${props => props.theme.labelColor};
+  height: ${TOP_SECTION_HEIGHT};
 
   .bottom-widget__y-axis {
     flex-grow: 1;
@@ -85,37 +76,19 @@ const TopSectionWrapper = styled.div`
 
       .item-selector__dropdown__value {
         color: ${props =>
-        props.hoverColor
-          ? props.theme[props.hoverColor]
-          : props.theme.textColorHl};
+          props.hoverColor ? props.theme[props.hoverColor] : props.theme.textColorHl};
       }
     }
   }
-`;
 
-/* eslint-disable no-unused-vars */
-const Tabs = styled.div`
-  padding-right: 76px;
-`;
+  .animation-control__speed-control {
+    margin-right: -12px;
 
-const Tab = styled.div`
-  border-bottom: 1px solid
-    ${props => (props.active ? props.theme.textColorHl : 'transparent')};
-  color: ${props =>
-  props.active ? props.theme.textColorHl : props.theme.labelColor};
-  display: inline-block;
-  font-size: 12px;
-  height: 24px;
-  margin-right: 4px;
-  text-align: center;
-  width: 24px;
-  line-height: 24px;
-
-  :hover {
-    cursor: pointer;
+    .animation-control__speed-slider {
+      right: calc(0% - 48px);
+    }
   }
 `;
-/* eslint-enable no-unused-vars */
 
 const StyledTitle = styled(CenterFlexbox)`
   flex-grow: 0;
@@ -130,96 +103,105 @@ const StyledTitle = styled(CenterFlexbox)`
   }
 `;
 
-export class TimeWidget extends Component {
-  state = {
-    showSpeedControl: false
-  };
+TimeWidgetFactory.deps = [
+  SpeedControlFactory,
+  TimeRangeSliderFactory,
+  FloatingTimeDisplayFactory,
+  FieldSelectorFactory
+];
+function TimeWidgetFactory(SpeedControl, TimeRangeSlider, FloatingTimeDisplay, FieldSelector) {
+  class TimeWidget extends Component {
+    fieldSelector = props => props.fields;
+    yAxisFieldsSelector = createSelector(this.fieldSelector, fields =>
+      fields.filter(f => f.type === 'integer' || f.type === 'real')
+    );
 
-  _toggleSpeedControl = () => {
-    this.setState({showSpeedControl: !this.state.showSpeedControl})
-  };
+    _updateAnimationSpeed = speed => this.props.updateAnimationSpeed(this.props.index, speed);
 
-  fieldSelector = props => props.fields;
-  yAxisFieldsSelector = createSelector(this.fieldSelector, fields =>
-    fields.filter(f => f.type === 'integer' || f.type === 'real')
-  );
+    _toggleAnimation = () => this.props.toggleAnimation(this.props.index);
 
-  render() {
-    const {
-      enlargedIdx,
-      enlargeFilter,
-      filter,
-      isAnyFilterAnimating,
-      setFilter,
-      setFilterPlot,
-      toggleAnimation,
-      updateAnimationSpeed,
-      width
-    } = this.props;
+    _onClose = () => this.props.enlargeFilter(this.props.index);
 
-    const {showSpeedControl} = this.state;
-    return (
-      <WidgetContainer width={width}>
-        <div className="bottom-widget--inner">
+    _setFilterPlotYAxis = value => this.props.setFilterPlot(this.props.index, {yAxis: value});
+
+    _setFilterAnimationWindow = animationWindow => {
+      this.props.setFilterAnimationWindow({id: this.props.filter.id, animationWindow});
+    };
+
+    render() {
+      const {
+        datasets,
+        filter,
+        index,
+        readOnly,
+        showTimeDisplay,
+        setFilterAnimationTime,
+        animationControlProps,
+        isAnimatable
+      } = this.props;
+
+      return (
+        <TimeBottomWidgetInner className="bottom-widget--inner">
           <TopSectionWrapper>
             <StyledTitle className="bottom-widget__field">
               <CenterFlexbox className="bottom-widget__icon">
-                <Clock height="15px"/>
+                <Clock height="15px" />
               </CenterFlexbox>
               <SelectTextBold>{filter.name}</SelectTextBold>
             </StyledTitle>
             <StyledTitle className="bottom-widget__y-axis">
               <CenterFlexbox className="bottom-widget__icon">
-                <LineChart height="15px"/>
+                <LineChart height="15px" />
               </CenterFlexbox>
               <div className="bottom-widget__field-select">
                 <FieldSelector
-                  fields={this.yAxisFieldsSelector(this.props)}
+                  fields={this.yAxisFieldsSelector(datasets[filter.dataId[0]])}
                   placement="top"
                   id="selected-time-widget-field"
                   value={filter.yAxis ? filter.yAxis.name : null}
-                  onSelect={value => setFilterPlot(enlargedIdx, {yAxis: value})}
-                  inputTheme="secondary"
-                  placeholder="Y Axis"
+                  onSelect={this._setFilterPlotYAxis}
+                  placeholder="placeholder.yAxis"
                   erasable
                   showToken={false}
                 />
               </div>
             </StyledTitle>
-            <StyledTitle className="bottom-widget__speed">
-              <Button link width="80px" onClick={this._toggleSpeedControl}>
-                <CenterFlexbox className="bottom-widget__icon speed">
-                  <Rocket height="15px"/>
-                </CenterFlexbox>
-                <div style={{
-                  visibility: !showSpeedControl ? 'visible' : 'hidden',
-                  display: 'inline-block',
-                  width: '27px'
-                }}>{filter.speed}x</div>
-              </Button>
-              {showSpeedControl ? <AnimationSpeedToggle
-                onHide={this._toggleSpeedControl}
-                updateAnimationSpeed={(speed) => updateAnimationSpeed(enlargedIdx, speed)}
-                speed={filter.speed}/> : null}
-            </StyledTitle>
-            <CenterFlexbox>
-              <IconRoundSmall>
-                <Close height="12px" onClick={() => enlargeFilter(enlargedIdx)} />
-              </IconRoundSmall>
-            </CenterFlexbox>
+            {!readOnly ? (
+              <CenterFlexbox>
+                <IconRoundSmall>
+                  <Close height="12px" onClick={this._onClose} />
+                </IconRoundSmall>
+              </CenterFlexbox>
+            ) : null}
           </TopSectionWrapper>
-          <TimeRangeFilter
-            filter={filter}
-            setFilter={value => setFilter(enlargedIdx, 'value', value)}
-            isAnyFilterAnimating={isAnyFilterAnimating}
-            updateAnimationSpeed={(speed) => updateAnimationSpeed(enlargedIdx, speed)}
-            toggleAnimation={() => toggleAnimation(enlargedIdx)}
+          <TimeRangeSlider
+            id={filter.id}
+            domain={filter.domain}
+            bins={filter.bins}
+            value={filter.value}
+            plotType={filter.plotType}
+            lineChart={filter.lineChart}
+            step={filter.step}
+            speed={filter.speed}
+            histogram={filter.enlargedHistogram}
+            onChange={value => setFilterAnimationTime(index, 'value', value)}
+            toggleAnimation={this._toggleAnimation}
+            updateAnimationSpeed={this._updateAnimationSpeed}
+            setFilterAnimationWindow={this._setFilterAnimationWindow}
+            isEnlarged={filter.enlarged}
+            animationWindow={filter.animationWindow}
+            isAnimating={filter.isAnimating}
+            hideTimeTitle={showTimeDisplay}
+            animationControlProps={animationControlProps}
+            isAnimatable={isAnimatable}
           />
-        </div>
-      </WidgetContainer>
-    );
+
+          {showTimeDisplay ? <FloatingTimeDisplay currentTime={filter.value} /> : null}
+        </TimeBottomWidgetInner>
+      );
+    }
   }
+  return TimeWidget;
 }
 
-const TimeWidgetFactory = () => TimeWidget;
 export default TimeWidgetFactory;

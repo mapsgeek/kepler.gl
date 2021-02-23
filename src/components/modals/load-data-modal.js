@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
+// Copyright (c) 2021 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -18,30 +18,77 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-import React from 'react';
-import PropTypes from 'prop-types';
+import React, {useState} from 'react';
 import styled from 'styled-components';
+import get from 'lodash.get';
+import {useIntl} from 'react-intl';
 
-import FileUpload from 'components/common/file-uploader/file-upload';
+import FileUploadFactory from 'components/common/file-uploader/file-upload';
+import LoadStorageMapFactory from './load-storage-map';
+import ModalTabsFactory from './modal-tabs';
+import LoadingDialog from './loading-dialog';
 
-const StyledLoadDataModal = styled.div`
+import {LOADING_METHODS} from 'constants/default-settings';
+
+/** @typedef {import('./load-data-modal').LoadDataModalProps} LoadDataModalProps */
+
+const StyledLoadDataModal = styled.div.attrs({
+  className: 'load-data-modal'
+})`
   padding: ${props => props.theme.modalPadding};
+  min-height: 440px;
+  display: flex;
+  flex-direction: column;
 `;
 
-const propTypes = {
-  // call backs
-  onFileUpload: PropTypes.func.isRequired
-};
+const noop = () => {};
+const getDefaultMethod = methods => (Array.isArray(methods) ? get(methods, [0]) : null);
 
-export const LoadDataModal = props => (
-  <StyledLoadDataModal>
-    <div className="load-data-modal">
-      <FileUpload onFileUpload={props.onFileUpload} />
-    </div>
-  </StyledLoadDataModal>
-);
+LoadDataModalFactory.deps = [ModalTabsFactory, FileUploadFactory, LoadStorageMapFactory];
 
-LoadDataModal.propTypes = propTypes;
+export function LoadDataModalFactory(ModalTabs, FileUpload, LoadStorageMap) {
+  /** @type {React.FunctionComponent<LoadDataModalProps>} */
+  const LoadDataModal = props => {
+    const intl = useIntl();
+    const {loadingMethods, isCloudMapLoading} = props;
+    const [currentMethod, toggleMethod] = useState(getDefaultMethod(loadingMethods));
 
-const loadDataModalFactory = () => LoadDataModal;
-export default loadDataModalFactory;
+    const ElementType = currentMethod.elementType;
+
+    return (
+      <StyledLoadDataModal>
+        <ModalTabs
+          currentMethod={currentMethod.id}
+          loadingMethods={loadingMethods}
+          toggleMethod={toggleMethod}
+        />
+        {isCloudMapLoading ? (
+          <LoadingDialog size={64} />
+        ) : (
+          currentMethod && <ElementType key={currentMethod.id} intl={intl} {...props} />
+        )}
+      </StyledLoadDataModal>
+    );
+  };
+
+  LoadDataModal.defaultProps = {
+    onFileUpload: noop,
+    fileLoading: false,
+    loadingMethods: [
+      {
+        id: LOADING_METHODS.upload,
+        label: 'modal.loadData.upload',
+        elementType: FileUpload
+      },
+      {
+        id: LOADING_METHODS.storage,
+        label: 'modal.loadData.storage',
+        elementType: LoadStorageMap
+      }
+    ]
+  };
+
+  return LoadDataModal;
+}
+
+export default LoadDataModalFactory;
